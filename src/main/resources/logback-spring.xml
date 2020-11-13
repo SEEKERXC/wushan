@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <contextName>logback</contextName>
+
+    <!--服务器日志-->
+    <appender name="wushanLog" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <Prudent>true</Prudent>
+        <!-- 过滤器  -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!--日志文件输出的文件名-->
+            <FileNamePattern>
+                /home/data/logs/wushan/%d{yyyy-MM-dd}.log
+            </FileNamePattern>
+            <!--日志文件保留天数-->
+            <MaxHistory>7</MaxHistory>
+        </rollingPolicy>
+        <layout class="ch.qos.logback.classic.PatternLayout">
+            <Pattern>
+                %d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n
+            </Pattern>
+        </layout>
+    </appender>
+
+    <!-- 错误日志文件输出 -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level> <!-- 日志过滤级别 -->
+        </filter>
+        <file>/home/data/logs/error.log</file><!-- 文件存放路径 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>/home/work/data/logs/error/%d{yyyy-MM-dd}.log</fileNamePattern><!-- 每天归档 -->
+            <maxHistory>7</maxHistory><!-- 日志存放周期（天） -->
+        </rollingPolicy>
+        <layout class="ch.qos.logback.classic.PatternLayout">
+            <Pattern>
+                %d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n
+            </Pattern>
+        </layout>
+    </appender>
+
+    <!--异步日志. logback同步异步性能差距很大，参考 https://plantegg.github.io/2019/09/12/logback%E6%97%A5%E5%BF%97%E5%BC%82%E6%AD%A5%E5%8C%96%E8%BE%93%E5%87%BA%E5%AF%B9%E6%80%A7%E8%83%BD%E7%9A%84%E5%BD%B1%E5%93%8D/-->
+    <appender name="wushanAsyncLog" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="wushanLog"/>
+    </appender>
+
+    <logger name="cn.ninanina.wushan" level="INFO" additivity="false">
+        <appender-ref ref="wushanAsyncLog"/>
+    </logger>
+
+    <logger name="java.sql.Connection" level="DEBUG"/>
+    <logger name="java.sql.Statement" level="DEBUG"/>
+    <logger name="java.sql.PreparedStatement" level="DEBUG"/>
+
+    <!-- 开发环境下的日志配置 -->
+    <root level="info">
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+</configuration>
