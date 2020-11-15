@@ -41,7 +41,7 @@ public class VideoCacheManager {
                     keyList.add(videoDetail.getId());
                     return videoDetail;
                 });
-        //程序初始化时，先从数据库中取2500个播放数最高的视频
+        //程序初始化时，先从数据库中取一些精选的视频，大概3000到5000个
         List<VideoDetail> hotVideos = videoRepository.findHottest(2500);
         for (VideoDetail videoDetail : hotVideos)
             hotVideoCache.put(videoDetail.getId(), videoDetail);

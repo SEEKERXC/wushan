@@ -8,15 +8,7 @@ import lombok.Setter;
 
 import java.io.Serializable;
 import java.util.List;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.FetchType;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
-import javax.persistence.ManyToMany;
-import javax.persistence.Table;
+import javax.persistence.*;
 
 @Entity
 @Table(name = "user")
@@ -56,12 +48,13 @@ public class User implements Serializable {
     @JsonIgnore
     private List<VideoDetail> viewedVideos;
 
-    @ManyToMany(mappedBy = "collectedUsers", fetch = FetchType.LAZY)
-    @JsonIgnore
-    private List<VideoDetail> collectedVideos;
-
     @ManyToMany(mappedBy = "downloadedUsers", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<VideoDetail> downloadedVideos;
+
+    @OneToMany(mappedBy = "user", targetEntity = VideoDir.class, fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @OrderBy("updateTime desc")
+    @JsonIgnore
+    private List<VideoDir> videoDirs;
 
 }

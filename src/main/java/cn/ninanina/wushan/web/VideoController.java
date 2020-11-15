@@ -4,6 +4,7 @@ import cn.ninanina.wushan.common.util.EncodeUtil;
 import cn.ninanina.wushan.domain.Comment;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
+import cn.ninanina.wushan.domain.VideoDir;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.CommonService;
 import cn.ninanina.wushan.service.TagService;
@@ -32,12 +33,12 @@ public class VideoController extends BaseController {
     private CommonService commonService;
 
     @GetMapping("/recommend")
-    public Response recommendVideos(@RequestParam("appKey") String appKey, @RequestParam("limit") Integer limit) {
-        if (!commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+    public Response recommendVideos(@RequestParam("appKey") String appKey,
+                                    @RequestParam("limit") Integer limit) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         User user = getUser();
         if (user == null) {
             List<VideoDetail> result = videoService.randomHotVideos(appKey, limit);
-            log.info("get random hot video, ip:{} result size: {}", getIp(), result.size());
             return result(result);
         }
         log.info("user: {} get recommendVideos, appKey: {}", user.getId(), appKey);
@@ -51,19 +52,16 @@ public class VideoController extends BaseController {
      * @param id 视频id
      */
     @GetMapping("/detail")
-    public Response videoDetail(@RequestParam("id") Long id) {
-        if (!videoRepository.findById(id).isPresent()) {
+    public Response videoDetail(@RequestParam("appKey") String appKey,
+                                @RequestParam("id") Long id) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (videoRepository.findById(id).isEmpty()) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
         User user = getUser();
         VideoDetail videoDetail;
-        if (user != null) {
-            videoDetail = videoService.getVideoDetail(id, user);
-            log.info("user {} get video detail: {}", user.getId(), id);
-        } else {
-            videoDetail = videoService.getVideoDetail(id, null);
-            log.info("get detail without login, video id:{}", id);
-        }
+        log.info("appKey {} get video detail: {}", appKey, id);
+        videoDetail = videoService.getVideoDetail(id, user);
         return result(videoDetail);
     }
 
@@ -74,7 +72,7 @@ public class VideoController extends BaseController {
      */
     @PostMapping("/exit")
     public Response exitVideoDetail(@RequestParam("id") Long id) {
-        if (!videoRepository.findById(id).isPresent()) {
+        if (videoRepository.findById(id).isEmpty()) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
         videoService.exitDetail(id);
@@ -123,13 +121,19 @@ public class VideoController extends BaseController {
     /**
      * 获取视频id相关的视频
      *
-     * @param id    视频id
-     * @param limit 获取数量
+     * @param id 视频id
      * @return 相关视频列表
      */
     @GetMapping("/related")
-    public Response relatedVideos(@RequestParam("id") Long id, @RequestParam("limit") Integer limit) {
-        return result();
+    public Response relatedVideos(@RequestParam("appKey") String appKey,
+                                  @RequestParam("id") Long id) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (videoRepository.findById(id).isEmpty()) {
+            return result(ResultMsg.INVALID_VIDEO_ID);
+        }
+        List<VideoDetail> result = videoService.relatedVideos(id);
+        log.info("get related videos, appKey: {}, result size: {}", appKey, result.size());
+        return result(result);
     }
 
     /**
@@ -186,38 +190,94 @@ public class VideoController extends BaseController {
     }
 
     /**
-     * 收藏视频/取消收藏视频
+     * 收藏视频
      *
-     * @param id 视频id
-     * @return 收藏/取消收藏的结果
+     * @param videoId 视频id
+     * @param dirId   收藏夹id
+     * @return 收藏的结果
      */
     @PostMapping("/collect")
-    public Response collectVideo(@RequestParam("id") Long id) {
+    public Response collectVideo(@RequestParam("appKey") String appKey,
+                                 @RequestParam("videoId") Long videoId,
+                                 @RequestParam("dirId") Long dirId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         User user = getUser();
         if (user == null) return result(ResultMsg.NOT_LOGIN);
-        if (!videoRepository.findById(id).isPresent()) {
+        if (videoRepository.findById(videoId).isEmpty()) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
-        if (videoService.collect(user, id)) {
+        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
+        if (videoService.collect(videoId, dirId)) {
             return result(ResultMsg.COLLECT_SUCCESS);
         } else {
-            result(ResultMsg.COLLECT_CANCEL);
+            result(ResultMsg.COLLECT_ALREADY);
         }
         return result();
     }
 
+    @PostMapping("/collect/cancel")
+    public Response cancelCollect(@RequestParam("appKey") String appKey,
+                                  @RequestParam("videoId") Long videoId,
+                                  @RequestParam("dirId") Long dirId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        User user = getUser();
+        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        if (videoRepository.findById(videoId).isEmpty()) {
+            return result(ResultMsg.INVALID_VIDEO_ID);
+        }
+        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
+        if (videoService.cancelCollect(videoId, dirId)) {
+            return result("取消收藏成功");
+        } else return result("视频与收藏夹参数不对应，取消失败，但不影响数据");
+
+    }
+
     /**
-     * 获取收藏的视频列表
+     * 获取收藏夹列表
      *
      * @return 收藏的视频列表
      */
     @GetMapping("/collect")
-    public Response collectedVideos() {
+    public Response collectedVideos(@RequestParam("appKey") String appKey) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         User user = getUser();
         if (user == null) return result(ResultMsg.NOT_LOGIN);
-        List<VideoDetail> result = videoService.collectedVideos(user);
-        log.info("user get collected videos, userid: {}, video list size: {}", user.getId(), result.size());
+        List<VideoDir> result = videoService.collectedDirs(user);
+        log.info("user get collected dirs, userid: {}, dir list size: {}", user.getId(), result.size());
         return result(result);
+    }
+
+    @PostMapping("/collect/create")
+    public Response createCollectDir(@RequestParam("appKey") String appKey,
+                                     @RequestParam("name") String name) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        User user = getUser();
+        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        VideoDir videoDir = videoService.createDir(user, name);
+        return result(videoDir);
+    }
+
+    @PostMapping("/collect/delete")
+    public Response deleteCollectDir(@RequestParam("appKey") String appKey,
+                                     @RequestParam("dirId") Long dirId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        User user = getUser();
+        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
+        videoService.removeDir(dirId);
+        return result();
+    }
+
+    @PostMapping("/collect/rename")
+    public Response renameCollectDir(@RequestParam("appKey") String appKey,
+                                     @RequestParam("dirId") Long dirId,
+                                     @RequestParam("name") String name) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        User user = getUser();
+        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
+        videoService.renameDir(dirId, name);
+        return result();
     }
 
     /**
@@ -237,8 +297,8 @@ public class VideoController extends BaseController {
     }
 
     public static void main(String[] args) {
-        System.out.println(EncodeUtil.encodeSHA(26754601+"jdfohewk"));
-        System.out.println(EncodeUtil.encodeSHA(26754602+"jdfohewk"));
+        System.out.println(EncodeUtil.encodeSHA(26754601 + "jdfohewk"));
+        System.out.println(EncodeUtil.encodeSHA(26754602 + "jdfohewk"));
     }
 
 }

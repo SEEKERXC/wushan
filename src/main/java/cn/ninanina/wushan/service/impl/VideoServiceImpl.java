@@ -4,13 +4,16 @@ import cn.ninanina.wushan.common.util.LuceneUtil;
 import cn.ninanina.wushan.domain.Comment;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
+import cn.ninanina.wushan.domain.VideoDir;
 import cn.ninanina.wushan.repository.CommentRepository;
 import cn.ninanina.wushan.repository.UserRepository;
+import cn.ninanina.wushan.repository.VideoDirRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.VideoService;
 import cn.ninanina.wushan.service.cache.RecommendCacheManager;
 import cn.ninanina.wushan.service.cache.VideoAudienceCacheManager;
 import cn.ninanina.wushan.service.cache.VideoCacheManager;
+import cn.ninanina.wushan.service.crawler.CrawlerService;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -31,17 +34,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.PostConstruct;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
+ * <p>这是整个应用的核心类。
  * <p>注意：启动项目前需要先启动chrome。
  * <p>第一次开启chrome的命令：
  * <p>   nohup /opt/google/chrome/google-chrome --no-sandbox
@@ -71,6 +71,12 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private CommentRepository commentRepository;
 
+    @Autowired
+    private VideoDirRepository videoDirRepository;
+
+    @Autowired
+    private CrawlerService crawlerService;
+
     private WebDriver driver;
 
     @PostConstruct
@@ -83,9 +89,13 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public List<VideoDetail> recommendVideos(@Nonnull User user, @Nonnull String appKey, int limit) {
+    public List<VideoDetail> recommendVideos(@Nonnull User user, @Nonnull String appKey, @Nonnull Integer limit) {
         List<VideoDetail> viewedVideos = user.getViewedVideos();
-        List<VideoDetail> collectedVideos = user.getCollectedVideos();
+        List<VideoDir> videoDirs = user.getVideoDirs();
+        List<VideoDetail> collectedVideos = new ArrayList<>();
+        for (VideoDir dir : videoDirs) {
+            collectedVideos.addAll(dir.getCollectedVideos());
+        }
         List<VideoDetail> downloadedVideos = user.getDownloadedVideos();
         if (CollectionUtils.isEmpty(viewedVideos)
                 && CollectionUtils.isEmpty(collectedVideos)
@@ -121,12 +131,12 @@ public class VideoServiceImpl implements VideoService {
         for (VideoDetail videoDetail : random10Videos) {
             if (!recommendCacheManager.exist(appKey, videoDetail.getId())) {
                 result.add(videoDetail);
-                recommendCacheManager.save(appKey,videoDetail.getId());
+                recommendCacheManager.save(appKey, videoDetail.getId());
             } else {
                 for (Long id : videoIdList) {
                     if (!recommendCacheManager.exist(appKey, id)) {
                         result.add(videoCacheManager.getVideo(id));
-                        recommendCacheManager.save(appKey,id);
+                        recommendCacheManager.save(appKey, id);
                         break;
                     }
                 }
@@ -138,16 +148,15 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public VideoDetail getVideoDetail(long videoId, User user) {
+    public VideoDetail getVideoDetail(@Nonnull Long videoId, User user) {
         VideoDetail detail = videoCacheManager.getVideo(videoId);
         if (StringUtils.isEmpty(detail.getSrc()) || !detail.getSrc().contains("xvideos")) {
             detail.setSrc(getSrc(detail.getUrl()));
-            log.info("new video src: {}", detail.getSrc());
+            log.info("video {} get new video src: {}", videoId, detail.getSrc());
             videoCacheManager.saveVideo(detail);
             videoRepository.save(detail);
         }
         String src = detail.getSrc(); //这里要保证视频链接真实，虽然视频不一定有效
-        log.info("video {}, src {}", videoId, src);
         long currentSeconds = System.currentTimeMillis() / 1000;
         long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h=")));
         long interval = 3600 * 5 / 2; //规定视频失效时间为2.5小时
@@ -172,8 +181,39 @@ public class VideoServiceImpl implements VideoService {
 
     //TODO:获取相关视频，高优先级
     @Override
-    public List<VideoDetail> relatedVideos(long videoId, int limit) {
-        return null;
+    public List<VideoDetail> relatedVideos(@Nonnull Long videoId) {
+        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
+        Set<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
+        relatedIds.addAll(videoRepository.findRelatedVideoIds_reverse(videoId));
+        relatedIds.remove(videoId);
+        Set<VideoDetail> result = videoDetail.getRelated();
+        if (CollectionUtils.isEmpty(result)) {
+            result = new HashSet<>();
+            videoDetail.setRelated(result);
+        }
+        for (long id : relatedIds) {
+            result.add(videoRepository.getOne(id));
+        }
+        if (result.size() < 10) {
+            crawlerService.getSpider().addUrl(videoDetail.getUrl()).thread(1).run();
+            try {
+                crawlerService.getSemaphore().acquire();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            String[] relatedUrls = crawlerService.getRelatedUrls();
+
+            for (String url : relatedUrls) {
+                VideoDetail relatedVideo = videoRepository.findByUrl(url);
+                if (relatedVideo != null) {
+                    result.add(relatedVideo);
+                    if (videoRepository.existRelation(videoId, relatedVideo.getId()) <= 0)
+                        videoRepository.insertRelated(videoId, relatedVideo.getId());
+                }
+            }
+        }
+        log.info("get related videos, size: {}", result.size());
+        return new ArrayList<>(result);
     }
 
     //TODO:设置同义词
@@ -213,29 +253,90 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public Boolean collect(@Nonnull User user, @Nonnull Long videoId) {
-        List<VideoDetail> collectedVideos = user.getCollectedVideos();
+    public VideoDir createDir(@Nonnull User user, @Nonnull String name) {
+        List<VideoDir> videoDirs = user.getVideoDirs();
+        if (CollectionUtils.isEmpty(videoDirs)) {
+            videoDirs = new ArrayList<>();
+            user.setVideoDirs(videoDirs);
+        }
+        if (videoDirs.size() >= 50) {
+            log.warn("user {} wanna create more than 50 dirs, refused.", user.getId());
+            return null;
+        }
+        VideoDir videoDir = new VideoDir();
+        videoDir.setName(name);
+        videoDir.setCount(0);
+        videoDir.setUser(user);
+        videoDir.setCreateTime(System.currentTimeMillis());
+        videoDir.setUpdateTime(System.currentTimeMillis());
+        videoDir = videoDirRepository.save(videoDir);
+        log.info("user created video dir, user id: {}, dir id: {}", user.getId(), videoDir.getId());
+        return videoDir;
+    }
+
+    @Override
+    public Boolean possessDir(@Nonnull User user, @Nonnull Long dirId) {
+        List<VideoDir> dirs = user.getVideoDirs();
+        VideoDir videoDir = videoDirRepository.getOne(dirId);
+        return dirs.contains(videoDir);
+    }
+
+    @Override
+    public void removeDir(@Nonnull Long id) {
+        videoDirRepository.deleteById(id);
+        log.info("removed dir, id:{}", id);
+    }
+
+    @Override
+    public void renameDir(@Nonnull Long id, @Nonnull String name) {
+        VideoDir dir = videoDirRepository.getOne(id);
+        dir.setName(name);
+        dir.setUpdateTime(System.currentTimeMillis());
+        videoDirRepository.save(dir);
+        log.info("renamed dir, id: {} new name: {}", id, name);
+    }
+
+    @Override
+    public Boolean collect(@Nonnull Long videoId, @Nonnull Long dirId) {
+        VideoDir dir = videoDirRepository.getOne(dirId);
+        List<VideoDetail> collectedVideos = dir.getCollectedVideos();
         if (CollectionUtils.isEmpty(collectedVideos)) {
             collectedVideos = new ArrayList<>();
-            user.setCollectedVideos(collectedVideos);
+            dir.setCollectedVideos(collectedVideos);
         }
         VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
-        //已收藏过，则移除
+        //已收藏过
         if (collectedVideos.contains(videoDetail)) {
-            collectedVideos.remove(videoDetail);
-            userRepository.save(user);
-            log.info("user canceled collection, user id: {}, video id: {}", user.getId(), videoId);
             return false;
         }
         collectedVideos.add(videoDetail);
-        log.info("user collected video, user id: {}, video id: {}", user.getId(), videoId);
-        userRepository.save(user);
+        dir.setUpdateTime(System.currentTimeMillis());
+        dir.setCount(dir.getCount() + 1);
+        log.info("collected video, dir id: {}, video id: {}", dirId, videoId);
+        videoDirRepository.save(dir);
         return true;
     }
 
     @Override
-    public List<VideoDetail> collectedVideos(User user) {
-        return user.getCollectedVideos();
+    public Boolean cancelCollect(@Nonnull Long videoId, @Nonnull Long dirId) {
+        VideoDir dir = videoDirRepository.getOne(dirId);
+        List<VideoDetail> collectedVideos = dir.getCollectedVideos();
+        if (CollectionUtils.isEmpty(collectedVideos)) {
+            return false;
+        }
+        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
+        if (!collectedVideos.contains(videoDetail)) return false;
+        collectedVideos.remove(videoDetail);
+        dir.setCount(dir.getCount() - 1);
+        dir.setUpdateTime(System.currentTimeMillis());
+        videoDirRepository.save(dir);
+        log.info("canceled collect video, dir id: {}, video id: {}", dirId, videoId);
+        return true;
+    }
+
+    @Override
+    public List<VideoDir> collectedDirs(User user) {
+        return user.getVideoDirs();
     }
 
     //TODO:分页获取看过的video，高优先级

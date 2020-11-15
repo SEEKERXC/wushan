@@ -9,7 +9,9 @@ public enum ResultMsg {
     INVALID_VIDEO_ID("000002", "无效视频id"),
     NOT_LOGIN("000003", "未登录"),
     EMPTY_CONTENT("000004", "空内容错误"),
+    COLLECT_WRONG_DIR("000005", "错误文件夹"),
     COLLECT_SUCCESS("000006", "收藏成功"),
+    COLLECT_ALREADY("000010", "已收藏过了"),
     COLLECT_CANCEL("000007", "取消收藏成功"),
 
     SECRET_INVALID("000008", "secret值无效"),

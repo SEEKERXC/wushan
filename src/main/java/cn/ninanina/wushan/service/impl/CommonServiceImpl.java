@@ -45,6 +45,6 @@ public class CommonServiceImpl implements CommonService {
 
     @Override
     public boolean appKeyValid(String appKey) {
-        return appInfoRepository.findByAppKey(appKey) != null;
+        return appInfoRepository.findByAppKey(appKey) == null;
     }
 }
