@@ -9,7 +9,7 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "video")
+@Table(name = "collect")
 @EqualsAndHashCode(of = "id")
 public class VideoDir {
     @Id
@@ -28,12 +28,12 @@ public class VideoDir {
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer count;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne
     @JoinColumn(name = "user_id", referencedColumnName = "id")
     @JsonIgnore
     private User user;
 
-    @ManyToMany(mappedBy = "videoDirs", fetch = FetchType.LAZY)
+    @ManyToMany(mappedBy = "videoDirs", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JsonIgnore
     private List<VideoDetail> collectedVideos;
 }

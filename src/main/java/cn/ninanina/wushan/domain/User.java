@@ -22,7 +22,7 @@ public class User implements Serializable {
     private Long id;
 
     @Column(nullable = false)
-    private Integer UUID;
+    private String username;
 
     @JsonIgnore
     @Column(nullable = false)

@@ -4,7 +4,7 @@ import cn.ninanina.wushan.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface UserRepository extends JpaRepository<User, Long> {
-    User findByUUID(Integer UUID);
+    User findByUsername(String username);
 
-    User findByUUIDAndPassword(Integer UUID, String password);
+    User findByUsernameAndPassword(String username, String password);
 }

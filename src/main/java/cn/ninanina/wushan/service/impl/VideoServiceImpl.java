@@ -102,7 +102,6 @@ public class VideoServiceImpl implements VideoService {
                 && CollectionUtils.isEmpty(downloadedVideos)) {
             return randomHotVideos(appKey, limit);
         }
-
         return null;
     }
 
@@ -195,22 +194,24 @@ public class VideoServiceImpl implements VideoService {
             result.add(videoRepository.getOne(id));
         }
         if (result.size() < 10) {
-            crawlerService.getSpider().addUrl(videoDetail.getUrl()).thread(1).run();
-            try {
-                crawlerService.getSemaphore().acquire();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            String[] relatedUrls = crawlerService.getRelatedUrls();
-
-            for (String url : relatedUrls) {
-                VideoDetail relatedVideo = videoRepository.findByUrl(url);
-                if (relatedVideo != null) {
-                    result.add(relatedVideo);
-                    if (videoRepository.existRelation(videoId, relatedVideo.getId()) <= 0)
-                        videoRepository.insertRelated(videoId, relatedVideo.getId());
+            log.info("related videos size {}, search for web.", result.size());
+            new Thread(() -> {
+                crawlerService.getSpider().addUrl(videoDetail.getUrl()).thread(1).run();
+                try {
+                    crawlerService.getSemaphore().acquire();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
-            }
+                String[] relatedUrls = crawlerService.getRelatedUrls();
+
+                for (String url : relatedUrls) {
+                    VideoDetail relatedVideo = videoRepository.findByUrl(url);
+                    if (relatedVideo != null) {
+                        if (videoRepository.existRelation(videoId, relatedVideo.getId()) <= 0)
+                            videoRepository.insertRelated(videoId, relatedVideo.getId());
+                    }
+                }
+            }).start();
         }
         log.info("get related videos, size: {}", result.size());
         return new ArrayList<>(result);

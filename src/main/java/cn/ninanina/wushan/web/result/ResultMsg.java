@@ -8,6 +8,7 @@ public enum ResultMsg {
 
     INVALID_VIDEO_ID("000002", "无效视频id"),
     NOT_LOGIN("000003", "未登录"),
+    USER_EXIST("000011", "用户名已存在"),
     EMPTY_CONTENT("000004", "空内容错误"),
     COLLECT_WRONG_DIR("000005", "错误文件夹"),
     COLLECT_SUCCESS("000006", "收藏成功"),
