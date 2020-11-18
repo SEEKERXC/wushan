@@ -13,7 +13,7 @@ import java.util.Set;
 @Entity
 @Table(name = "video")
 @EqualsAndHashCode(of = "id")
-@JsonIgnoreProperties(value = {"handler","hibernateLazyInitializer","fieldHandler"})
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer"})
 public class VideoDetail {
     @Id
     @GeneratedValue
@@ -75,9 +75,4 @@ public class VideoDetail {
             joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},
             inverseJoinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)})
     private List<User> downloadedUsers;
-
-    @Transient
-    @JsonIgnore
-    @JsonIgnoreProperties(value = {"handler","hibernateLazyInitializer","fieldHandler"})
-    private Set<VideoDetail> related;
 }

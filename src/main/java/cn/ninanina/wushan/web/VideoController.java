@@ -5,6 +5,7 @@ import cn.ninanina.wushan.domain.Comment;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
 import cn.ninanina.wushan.domain.VideoDir;
+import cn.ninanina.wushan.repository.TagRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.CommonService;
 import cn.ninanina.wushan.service.TagService;
@@ -29,6 +30,8 @@ public class VideoController extends BaseController {
     private VideoRepository videoRepository;
     @Autowired
     private TagService tagService;
+    @Autowired
+    private TagRepository tagRepository;
     @Autowired
     private CommonService commonService;
 
@@ -155,9 +158,11 @@ public class VideoController extends BaseController {
      * @return 视频列表
      */
     @GetMapping("/search")
-    public Response search(@RequestParam("query") String query,
+    public Response search(@RequestParam("appKey") String appKey,
+                           @RequestParam("query") String query,
                            @RequestParam("offset") Integer offset,
                            @RequestParam("limit") Integer limit) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         User user = getUser();
         List<VideoDetail> result = videoService.search(query, offset, limit);
         if (user != null) {
@@ -227,8 +232,8 @@ public class VideoController extends BaseController {
         }
         if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
         if (videoService.cancelCollect(videoId, dirId)) {
-            return result("取消收藏成功");
-        } else return result("视频与收藏夹参数不对应，取消失败，但不影响数据");
+            return result();
+        } else return result(ResultMsg.COLLECT_WRONG_DIR);
 
     }
 
@@ -247,6 +252,13 @@ public class VideoController extends BaseController {
         return result(result);
     }
 
+    /**
+     * 创建收藏夹
+     *
+     * @param appKey appKey
+     * @param name   收藏夹名字
+     * @return 收藏夹
+     */
     @PostMapping("/collect/create")
     public Response createCollectDir(@RequestParam("appKey") String appKey,
                                      @RequestParam("name") String name) {
@@ -276,8 +288,8 @@ public class VideoController extends BaseController {
         User user = getUser();
         if (user == null) return result(ResultMsg.NOT_LOGIN);
         if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
-        videoService.renameDir(dirId, name);
-        return result();
+        VideoDir dir = videoService.renameDir(dirId, name);
+        return result(dir);
     }
 
     /**
@@ -296,9 +308,13 @@ public class VideoController extends BaseController {
         return result();
     }
 
-    public static void main(String[] args) {
-        System.out.println(EncodeUtil.encodeSHA(26754601 + "jdfohewk"));
-        System.out.println(EncodeUtil.encodeSHA(26754602 + "jdfohewk"));
+    @PostMapping("/updateTag")
+    public Response updateTag(@RequestParam("id") Long id,
+                              @RequestParam("name") String name) {
+        tagRepository.findById(id).ifPresent(tagDetail -> {
+            tagDetail.setTagZh(name);
+            tagRepository.save(tagDetail);
+        });
+        return result();
     }
-
 }

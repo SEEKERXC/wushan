@@ -13,7 +13,6 @@ import cn.ninanina.wushan.service.VideoService;
 import cn.ninanina.wushan.service.cache.RecommendCacheManager;
 import cn.ninanina.wushan.service.cache.VideoAudienceCacheManager;
 import cn.ninanina.wushan.service.cache.VideoCacheManager;
-import cn.ninanina.wushan.service.crawler.CrawlerService;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -73,9 +72,6 @@ public class VideoServiceImpl implements VideoService {
 
     @Autowired
     private VideoDirRepository videoDirRepository;
-
-    @Autowired
-    private CrawlerService crawlerService;
 
     private WebDriver driver;
 
@@ -150,7 +146,7 @@ public class VideoServiceImpl implements VideoService {
     public VideoDetail getVideoDetail(@Nonnull Long videoId, User user) {
         VideoDetail detail = videoCacheManager.getVideo(videoId);
         if (StringUtils.isEmpty(detail.getSrc()) || !detail.getSrc().contains("xvideos")) {
-            detail.setSrc(getSrc(detail.getUrl()));
+            detail.setSrc(getSrc(detail));
             log.info("video {} get new video src: {}", videoId, detail.getSrc());
             videoCacheManager.saveVideo(detail);
             videoRepository.save(detail);
@@ -160,7 +156,7 @@ public class VideoServiceImpl implements VideoService {
         long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h=")));
         long interval = 3600 * 5 / 2; //规定视频失效时间为2.5小时
         if (currentSeconds - urlSeconds >= interval) {
-            detail.setSrc(getSrc(detail.getUrl()));
+            detail.setSrc(getSrc(detail));
             log.info("update video src, videoId: {}, newSrc: {}", videoId, detail.getSrc());
             videoCacheManager.saveVideo(detail);
             videoRepository.save(detail);
@@ -181,37 +177,15 @@ public class VideoServiceImpl implements VideoService {
     //TODO:获取相关视频，高优先级
     @Override
     public List<VideoDetail> relatedVideos(@Nonnull Long videoId) {
-        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
         Set<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
         relatedIds.addAll(videoRepository.findRelatedVideoIds_reverse(videoId));
         relatedIds.remove(videoId);
-        Set<VideoDetail> result = videoDetail.getRelated();
-        if (CollectionUtils.isEmpty(result)) {
-            result = new HashSet<>();
-            videoDetail.setRelated(result);
-        }
+        Set<VideoDetail> result = new HashSet<>();
         for (long id : relatedIds) {
             result.add(videoRepository.getOne(id));
         }
         if (result.size() < 10) {
-            log.info("related videos size {}, search for web.", result.size());
-            new Thread(() -> {
-                crawlerService.getSpider().addUrl(videoDetail.getUrl()).thread(1).run();
-                try {
-                    crawlerService.getSemaphore().acquire();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                String[] relatedUrls = crawlerService.getRelatedUrls();
-
-                for (String url : relatedUrls) {
-                    VideoDetail relatedVideo = videoRepository.findByUrl(url);
-                    if (relatedVideo != null) {
-                        if (videoRepository.existRelation(videoId, relatedVideo.getId()) <= 0)
-                            videoRepository.insertRelated(videoId, relatedVideo.getId());
-                    }
-                }
-            }).start();
+            //TODO:获取二级关联视频
         }
         log.info("get related videos, size: {}", result.size());
         return new ArrayList<>(result);
@@ -227,7 +201,7 @@ public class VideoServiceImpl implements VideoService {
         QueryParser parser = new MultiFieldQueryParser(Version.LUCENE_4_10_4, fields, LuceneUtil.get().getAnalyzer());
         Query query = parser.parse(word);
         TopDocs topDocs = indexSearcher.search(query, offset + limit);
-        for (int i = offset; i < offset + limit; i++) {
+        for (int i = offset; i < offset + limit && i < topDocs.scoreDocs.length; i++) {
             ScoreDoc scoreDoc = topDocs.scoreDocs[i];
             Document document = indexSearcher.doc(scoreDoc.doc);
             long id = Long.parseLong(document.get("id"));
@@ -289,12 +263,13 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public void renameDir(@Nonnull Long id, @Nonnull String name) {
+    public VideoDir renameDir(@Nonnull Long id, @Nonnull String name) {
         VideoDir dir = videoDirRepository.getOne(id);
         dir.setName(name);
         dir.setUpdateTime(System.currentTimeMillis());
-        videoDirRepository.save(dir);
+        dir = videoDirRepository.save(dir);
         log.info("renamed dir, id: {} new name: {}", id, name);
+        return dir;
     }
 
     @Override
@@ -379,7 +354,8 @@ public class VideoServiceImpl implements VideoService {
         return result;
     }
 
-    private synchronized String getSrc(String url) {
+    public synchronized String getSrc(VideoDetail videoDetail) {
+        String url = videoDetail.getUrl();
         String result = "";
         driver.get(url);
 
@@ -395,8 +371,10 @@ public class VideoServiceImpl implements VideoService {
             result = driver.findElement(href).getAttribute("href");
             log.info("get newest video src, url: {}, src: {}", url, result);
         } else {
-            log.error("can't get download href!, errMsg: {}",
-                    driver.findElement(new By.ByCssSelector("#tabDownload > h4")).getText());
+            //视频无效
+            log.error("can't get download href!, video url: {}", url);
+            videoDetail.setValid(false);
+            videoRepository.save(videoDetail);
         }
         return result;
     }
@@ -412,4 +390,5 @@ public class VideoServiceImpl implements VideoService {
             driver.manage().timeouts().implicitlyWait(5, TimeUnit.SECONDS);
         }
     }
+
 }

@@ -61,6 +61,15 @@ public class UserController extends BaseController {
         return result(user);
     }
 
+    @PostMapping("/logout")
+    public Response logout(@RequestParam("appKey") String appKey) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (getUser() == null) return result(ResultMsg.NOT_LOGIN);
+        log.info("user {} logged out", getUser().getId());
+        getSession().invalidate();
+        return result();
+    }
+
     @GetMapping("/exist")
     public Response exist(@RequestParam("appKey") String appKey,
                           @RequestParam("username") String username) {

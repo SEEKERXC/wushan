@@ -110,7 +110,7 @@ public interface VideoService {
      * @param id   收藏夹id
      * @param name 新名字
      */
-    void renameDir(@Nonnull Long id, @Nonnull String name);
+    VideoDir renameDir(@Nonnull Long id, @Nonnull String name);
 
     /**
      * 获取用户的收藏文件夹列表

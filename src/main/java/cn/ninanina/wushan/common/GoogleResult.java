@@ -5,6 +5,6 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class YoudaoResult {
-    private List<String> translation;
+public class GoogleResult {
+    private List<Sentence> sentences;
 }

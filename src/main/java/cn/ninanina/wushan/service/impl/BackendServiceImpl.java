@@ -1,6 +1,6 @@
 package cn.ninanina.wushan.service.impl;
 
-import cn.ninanina.wushan.common.YoudaoResult;
+import cn.ninanina.wushan.common.GoogleResult;
 import cn.ninanina.wushan.common.util.LuceneUtil;
 import cn.ninanina.wushan.domain.TagDetail;
 import cn.ninanina.wushan.domain.VideoDetail;
@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.PostConstruct;
 
 /**
- * 有道翻译API：https://ai.youdao.com/app_detail.s?id=611190e1aadbc20e
+ * 执行一些后台任务，包括翻译、建索引、实时抓取视频链接等
  */
 @Service
 @Slf4j
@@ -62,18 +62,12 @@ public class BackendServiceImpl implements BackendService {
     //一个建索引线程，每个处理之间间隔500毫秒
     private final ScheduledExecutorService indexingExecutorService = Executors.newScheduledThreadPool(1);
 
-    private static final String YOUDAO_URL = "https://openapi.youdao.com/api";
-
-    //有道翻译应用id
-    private static final String APP_KEY = "611190e1aadbc20e";
-
-    //有道翻译应用密钥
-    private static final String APP_SECRET = "b1ILUcWjap9bINdgzvDZWKe8TstO69Vt";
+    private static final String URL = "http://translate.google.cn/translate_a/single";
 
     //先不开启翻译，没钱了！！
     @PostConstruct
     public void init() {
-//        startTranslate();
+        startTranslate();
         startIndexing();
     }
 
@@ -92,18 +86,13 @@ public class BackendServiceImpl implements BackendService {
             while (tagWatermark != null) {
                 tagRepository.findById(tagWatermark).ifPresent(tagDetail -> {
                     Map<String, String> params = new HashMap<>();
-                    params.put("from", "en");
-                    params.put("to", "zh-CHS");
-                    params.put("signType", "v3");
-                    params.put("appKey", APP_KEY);
-                    String curtime = String.valueOf(System.currentTimeMillis() / 1000);
-                    params.put("curtime", curtime);
-                    String salt = String.valueOf(System.currentTimeMillis());
-                    params.put("salt", salt);
+                    params.put("client", "gtx");
+                    params.put("dt", "t");
+                    params.put("dj", "1");
+                    params.put("ie", "UTF-8");
+                    params.put("sl", "auto");
+                    params.put("tl", "zh");
                     String q = tagDetail.getTag();
-                    String signStr = APP_KEY + truncate(q) + salt + curtime + APP_SECRET;
-                    String sign = getDigest(signStr);
-                    params.put("sign", sign);
                     params.put("q", q);
                     String tagZh = requestForHttp(params);
                     tagDetail.setTagZh(tagZh);
@@ -119,19 +108,14 @@ public class BackendServiceImpl implements BackendService {
             while (watermark != null) {
                 videoRepository.findById(watermark).ifPresent(videoDetail -> {
                     Map<String, String> params = new HashMap<>();
-                    params.put("from", "en");
-                    params.put("to", "zh-CHS");
-                    params.put("signType", "v3");
-                    params.put("appKey", APP_KEY);
-                    String curtime = String.valueOf(System.currentTimeMillis() / 1000);
-                    params.put("curtime", curtime);
-                    String salt = String.valueOf(System.currentTimeMillis());
-                    params.put("salt", salt);
+                    params.put("client", "gtx");
+                    params.put("dt", "t");
+                    params.put("dj", "1");
+                    params.put("ie", "UTF-8");
+                    params.put("sl", "auto");
+                    params.put("tl", "zh");
                     String q = videoDetail.getTitle();
                     if (StringUtils.isEmpty(q)) q = "no title";
-                    String signStr = APP_KEY + truncate(q) + salt + curtime + APP_SECRET;
-                    String sign = getDigest(signStr);
-                    params.put("sign", sign);
                     params.put("q", q);
                     String titleZh = requestForHttp(params);
                     videoDetail.setTitleZh(titleZh);
@@ -175,10 +159,12 @@ public class BackendServiceImpl implements BackendService {
                 document.add(new TextField("tagZh", tagZhBuilder.toString(), Field.Store.YES));
                 try {
                     indexWriter.addDocument(document);
+                    indexWriter.commit();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
                 count.getAndIncrement();
+
 
                 videoDetail.setIndexed(true);
                 videoRepository.save(videoDetail);
@@ -209,7 +195,7 @@ public class BackendServiceImpl implements BackendService {
     private String requestForHttp(Map<String, String> params) {
         CloseableHttpClient httpClient = HttpClients.createDefault();
         /* httpPost */
-        HttpPost httpPost = new HttpPost(BackendServiceImpl.YOUDAO_URL);
+        HttpPost httpPost = new HttpPost(URL);
         List<BasicNameValuePair> paramsList = new ArrayList<>();
         for (Map.Entry<String, String> en : params.entrySet()) {
             String key = en.getKey();
@@ -219,58 +205,23 @@ public class BackendServiceImpl implements BackendService {
         httpPost.setEntity(new UrlEncodedFormEntity(paramsList, "UTF-8"));
         log.info("translating {}", params.get("q"));
         CloseableHttpResponse httpResponse = httpClient.execute(httpPost);
-        httpClient.close();
         try {
             /* 响应不是音频流，直接显示结果 */
             HttpEntity httpEntity = httpResponse.getEntity();
             String json = EntityUtils.toString(httpEntity, "UTF-8");
             EntityUtils.consume(httpEntity);
             Gson gson = new Gson();
-            YoudaoResult result = gson.fromJson(json, YoudaoResult.class);
-            return result.getTranslation().get(0);
+            GoogleResult result = gson.fromJson(json, GoogleResult.class);
+            return result.getSentences().get(0).getTrans();
         } finally {
             try {
                 if (httpResponse != null) {
                     httpResponse.close();
+                    httpClient.close();
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
     }
-
-    /**
-     * 生成加密字段
-     */
-    private String getDigest(String string) {
-        if (string == null) {
-            return null;
-        }
-        char[] hexDigits = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
-        byte[] btInput = string.getBytes(StandardCharsets.UTF_8);
-        try {
-            MessageDigest mdInst = MessageDigest.getInstance("SHA-256");
-            mdInst.update(btInput);
-            byte[] md = mdInst.digest();
-            int j = md.length;
-            char[] str = new char[j * 2];
-            int k = 0;
-            for (byte byte0 : md) {
-                str[k++] = hexDigits[byte0 >>> 4 & 0xf];
-                str[k++] = hexDigits[byte0 & 0xf];
-            }
-            return new String(str);
-        } catch (NoSuchAlgorithmException e) {
-            return null;
-        }
-    }
-
-    private String truncate(String q) {
-        if (q == null) {
-            return null;
-        }
-        int len = q.length();
-        return len <= 20 ? q : (q.substring(0, 10) + len + q.substring(len - 10, len));
-    }
-
 }
