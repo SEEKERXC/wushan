@@ -94,7 +94,7 @@ public class VideoCacheManager {
                 }
                 if (keyList.size() >= 3000) {
                     //启动SeleniumCrawler
-//                    seleniumCrawler.start(this);
+                    seleniumCrawler.start(this);
                     break;
                 }
             }

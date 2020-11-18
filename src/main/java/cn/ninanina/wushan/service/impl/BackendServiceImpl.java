@@ -67,8 +67,8 @@ public class BackendServiceImpl implements BackendService {
     //先不开启翻译，没钱了！！
     @PostConstruct
     public void init() {
-        startTranslate();
-        startIndexing();
+//        startTranslate();
+//        startIndexing();
     }
 
     @Override
