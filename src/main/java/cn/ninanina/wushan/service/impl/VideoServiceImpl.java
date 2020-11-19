@@ -73,8 +73,14 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private VideoDirRepository videoDirRepository;
 
+    /**
+     * 目前只有本机的driver，之后需要维持一个driver的map，用来操作机器的浏览器
+     */
     private WebDriver driver;
 
+    /**
+     * TODO: 均匀分摊视频链接请求的压力，目前低优先级，日后最高优先级
+     */
     @PostConstruct
     public void init() {
         System.setProperty("webdriver.chrome.driver", "/opt/WebDriver/bin/chromedriver");
@@ -85,7 +91,24 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public List<VideoDetail> recommendVideos(@Nonnull User user, @Nonnull String appKey, @Nonnull Integer limit) {
+    public List<VideoDetail> recommendVideos(User user, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit) {
+        switch (type) {
+            case "hot":
+                return hotVideos(appKey, limit);
+            case "rihan":
+                System.out.println("rihan");
+                break;
+            case "china":
+                System.out.println("china");
+                break;
+            case "west":
+                System.out.println("west");
+                break;
+            case "lesbian":
+                System.out.println("lesbian");
+                break;
+        }
+        if (user == null) return hotVideos(appKey, limit);
         List<VideoDetail> viewedVideos = user.getViewedVideos();
         List<VideoDir> videoDirs = user.getVideoDirs();
         List<VideoDetail> collectedVideos = new ArrayList<>();
@@ -96,48 +119,24 @@ public class VideoServiceImpl implements VideoService {
         if (CollectionUtils.isEmpty(viewedVideos)
                 && CollectionUtils.isEmpty(collectedVideos)
                 && CollectionUtils.isEmpty(downloadedVideos)) {
-            return randomHotVideos(appKey, limit);
+            return hotVideos(appKey, limit);
         }
         return null;
     }
 
-    @Override
-    public List<VideoDetail> randomHotVideos(@Nonnull String appKey, @Nonnull Integer limit) {
-        List<Long> videoIdList = videoCacheManager.getKeys();
-        List<VideoDetail> random10Videos = new ArrayList<>(limit);
+    private List<VideoDetail> hotVideos(@Nonnull String appKey, @Nonnull Integer limit) {
+        List<Long> videoIdList = videoCacheManager.getHotKeys();
         List<VideoDetail> result = new ArrayList<>(limit);
-        //videoIdList是一个linkedList，长度小于3w，遍历一次id列表，随机取其中10个即可。
-        Set<Integer> seqToFetch = new HashSet<>();
-        Random random = new Random();
-        while (seqToFetch.size() < limit) {
-            int seq = random.nextInt(videoIdList.size());
-            seqToFetch.add(seq);
-        }
-        int i = 0;
+        //videoIdList是一个linkedList，长度小于3w，遍历一次id列表，取其中10个即可。
         for (Long id : videoIdList) {
-            if (seqToFetch.contains(i)) {
-                random10Videos.add(videoCacheManager.getVideo(id));
-            }
-            i++;
-        }
-        //如果重复了，替换
-        //替换方法是，遍历videoIdList，如果遍历到的id没有被推荐过，那就推荐它
-        //这样保证了最火热的视频优先推荐
-        for (VideoDetail videoDetail : random10Videos) {
-            if (!recommendCacheManager.exist(appKey, videoDetail.getId())) {
+            if (!recommendCacheManager.exist(appKey, id)) {
+                VideoDetail videoDetail = videoCacheManager.getVideo(id);
                 result.add(videoDetail);
-                recommendCacheManager.save(appKey, videoDetail.getId());
-            } else {
-                for (Long id : videoIdList) {
-                    if (!recommendCacheManager.exist(appKey, id)) {
-                        result.add(videoCacheManager.getVideo(id));
-                        recommendCacheManager.save(appKey, id);
-                        break;
-                    }
-                }
+                recommendCacheManager.save(appKey, id);
             }
+            if (result.size() >= limit) break;
         }
-        log.info("user with appKey {} get random hot videos, total: {}",
+        log.info("user with appKey {} get hot videos, now total: {}",
                 appKey, recommendCacheManager.total(appKey));
         return result;
     }
@@ -146,20 +145,17 @@ public class VideoServiceImpl implements VideoService {
     public VideoDetail getVideoDetail(@Nonnull Long videoId, User user) {
         VideoDetail detail = videoCacheManager.getVideo(videoId);
         if (StringUtils.isEmpty(detail.getSrc()) || !detail.getSrc().contains("xvideos")) {
-            detail.setSrc(getSrc(detail));
-            log.info("video {} get new video src: {}", videoId, detail.getSrc());
-            videoCacheManager.saveVideo(detail);
-            videoRepository.save(detail);
+            getVideoSrc(detail);
+            if (StringUtils.isEmpty(detail.getSrc())) {//这里表示视频已经被网站删除，下面同理
+                return detail;
+            }
         }
         String src = detail.getSrc(); //这里要保证视频链接真实，虽然视频不一定有效
         long currentSeconds = System.currentTimeMillis() / 1000;
-        long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h=")));
-        long interval = 3600 * 5 / 2; //规定视频失效时间为2.5小时
-        if (currentSeconds - urlSeconds >= interval) {
-            detail.setSrc(getSrc(detail));
-            log.info("update video src, videoId: {}, newSrc: {}", videoId, detail.getSrc());
-            videoCacheManager.saveVideo(detail);
-            videoRepository.save(detail);
+        long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h="))) - 1800;
+        if (currentSeconds >= urlSeconds) {
+            getVideoSrc(detail);
+            if (StringUtils.isEmpty(detail.getSrc())) return detail;
         }
         if (user != null) {
             List<VideoDetail> viewedVideos = user.getViewedVideos();
@@ -293,6 +289,7 @@ public class VideoServiceImpl implements VideoService {
         return true;
     }
 
+    //取消收藏的video直接从数据库获取，不放到cache中
     @Override
     public Boolean cancelCollect(@Nonnull Long videoId, @Nonnull Long dirId) {
         VideoDir dir = videoDirRepository.getOne(dirId);
@@ -300,7 +297,7 @@ public class VideoServiceImpl implements VideoService {
         if (CollectionUtils.isEmpty(collectedVideos)) {
             return false;
         }
-        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
+        VideoDetail videoDetail = videoRepository.getOne(videoId);
         if (!collectedVideos.contains(videoDetail)) return false;
         collectedVideos.remove(videoDetail);
         dir.setCount(dir.getCount() - 1);
@@ -354,29 +351,45 @@ public class VideoServiceImpl implements VideoService {
         return result;
     }
 
-    public synchronized String getSrc(VideoDetail videoDetail) {
+    /**
+     * <p>从浏览器获取视频有效链接。目前测试阶段，直接从本机浏览器获取。
+     * <p>之后实现步骤为，首先获取当前可用的机器的列表，然后随机选其中一个进行操作
+     * <p>如果操作失败了，那台机器的账号达到次数限制，立马将其标注为不可用，发出警告，然后手动恢复并标注为可用。
+     * <p>为了尽可能保证下载次数不达到限制，必须平衡QPS与机器数。
+     * <p>这是一个相当耗时的操作，一般需要5-10秒
+     */
+    private void getVideoSrc(VideoDetail videoDetail) {
+        //TODO：获取有效的浏览器driver
         String url = videoDetail.getUrl();
-        String result = "";
         driver.get(url);
 
         //点击下载按钮
         By downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(2) > a");
         if (isElementExist(driver, downloadBtn)) {
             driver.findElement(downloadBtn).click();
+        } else {
+            //没有下载按钮，表示这个视频已经从网站删除，这里也应该删除
+            //返回空src表示视频已经被删除
+            videoDetail.setSrc("");
+            videoRepository.delete(videoDetail);
+            videoCacheManager.removeVideo(videoDetail);
+            audienceCacheManager.delete(videoDetail.getId());
+            log.warn("video {} has been deleted while fetching source.", videoDetail.getId());
+            return;
         }
-
         //等待下载链接
         By href = new By.ByCssSelector("#tabDownload > p > a:nth-child(1)");
         if (isElementExist(driver, href)) {
-            result = driver.findElement(href).getAttribute("href");
-            log.info("get newest video src, url: {}, src: {}", url, result);
+            String src = driver.findElement(href).getAttribute("href");
+            videoDetail.setSrc(src);
+            videoDetail.setUpdateTime(System.currentTimeMillis());
+            log.info("update video src, videoId: {}, newSrc: {}", videoDetail.getId(), videoDetail.getSrc());
+            videoCacheManager.saveVideo(videoDetail);
         } else {
-            //视频无效
-            log.error("can't get download href!, video url: {}", url);
-            videoDetail.setValid(false);
-            videoRepository.save(videoDetail);
+            //TODO: 当前机器的账号下载次数达到限制，转移请求，标记机器为不可用，并且发出警告，待手动恢复正常再重新启用。中优先级
+            log.error("can't get download href!, driver addr: {}", "localhost");
         }
-        return result;
+        videoRepository.save(videoDetail);
     }
 
     private boolean isElementExist(WebDriver driver, By locator) {

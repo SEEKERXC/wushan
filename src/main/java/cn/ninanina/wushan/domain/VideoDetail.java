@@ -49,6 +49,9 @@ public class VideoDetail {
     @Column(nullable = false, columnDefinition = "bit(1) default false")
     private Boolean indexed;
 
+    @Column(nullable = false, columnDefinition = "bigint(20) default 0")
+    private Long updateTime;
+
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(name = "video_tag",
             joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},

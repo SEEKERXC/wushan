@@ -25,8 +25,8 @@ public class RecommendCacheManager {
     @PostConstruct
     public void init() {
         recommendedCache = Caffeine.newBuilder()
-                .initialCapacity(500)
-                .maximumSize(2000)
+                .initialCapacity(100)
+                .maximumSize(1000)
                 .expireAfterAccess(3600, TimeUnit.SECONDS) //过期时间和会话过期时间一样
                 .removalListener((RemovalListener<String, Set<Long>>) (s, longs, removalCause) -> {
                     //TODO:appKey过期处理
@@ -41,11 +41,6 @@ public class RecommendCacheManager {
     public void save(String appKey, long videoId) {
         Set<Long> set = recommendedCache.get(appKey);
         set.add(videoId);
-    }
-
-    public void save(String appKey, List<Long> videoIds) {
-        Set<Long> set = recommendedCache.get(appKey);
-        set.addAll(videoIds);
     }
 
     /**

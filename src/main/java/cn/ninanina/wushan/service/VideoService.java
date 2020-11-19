@@ -20,23 +20,15 @@ import java.util.List;
 public interface VideoService {
     /**
      * 获取推荐视频列表，返回10个。目前采用最简单的实现方式：
-     * <p>根据用户浏览过的tag获取，如果用户未登录或者没看过视频，就返回随机热点视频
-     * <p>根据appKey来保存每个app的当前获取状态。
+     * <p>首先取validVideoCache里面的值，即当前有效视频。有效视频取完后，
+     * <p>然后根据用户收藏、下载、浏览过的视频推荐，
+     * <p>如果没有任何记录或者记录很少，则从选定的精华视频中推荐。
      *
-     * @param user 用户信息
+     * @param user   用户信息
+     * @param appKey 用来区分app
      * @return 推荐视频列表，视频链接不一定有效
-     * @Param appKey 用来区分app
      */
-    List<VideoDetail> recommendVideos(@Nonnull User user, @Nonnull String appKey, @Nonnull Integer limit);
-
-    /**
-     * 获取随机热点视频列表，从缓存中获取，每次取10个。
-     * 根据appKey来保存每个app的当前获取状态。
-     *
-     * @return 视频信息列表，链接不一定有效
-     * @Param appKey 用来区分app
-     */
-    List<VideoDetail> randomHotVideos(@Nonnull String appKey, @Nonnull Integer limit);
+    List<VideoDetail> recommendVideos(User user, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit);
 
     /**
      * 获取指定视频的有效信息，即更新视频链接，当客户端请求视频详情，并且视频链接失效时才调用。

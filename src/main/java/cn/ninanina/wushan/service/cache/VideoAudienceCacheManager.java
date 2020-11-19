@@ -39,6 +39,10 @@ public class VideoAudienceCacheManager {
         }
     }
 
+    public void delete(long videoId) {
+        audienceCache.remove(videoId);
+    }
+
     /**
      * 获取视频观众排行，降序排列
      *

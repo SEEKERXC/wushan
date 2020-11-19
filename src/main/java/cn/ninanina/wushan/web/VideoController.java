@@ -37,15 +37,13 @@ public class VideoController extends BaseController {
 
     @GetMapping("/recommend")
     public Response recommendVideos(@RequestParam("appKey") String appKey,
+                                    @RequestParam("type") String type,
                                     @RequestParam("limit") Integer limit) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (limit <= 0 || limit >= 50) return result(ResultMsg.ParamError);
         User user = getUser();
-        if (user == null) {
-            List<VideoDetail> result = videoService.randomHotVideos(appKey, limit);
-            return result(result);
-        }
-        log.info("user: {} get recommendVideos, appKey: {}", user.getId(), appKey);
-        return result(videoService.recommendVideos(user, appKey, limit));
+        log.info("get recommendVideos, appKey: {}, type: {} ,limit: {}", appKey, type, limit);
+        return result(videoService.recommendVideos(user, appKey, type, limit));
     }
 
     /**
