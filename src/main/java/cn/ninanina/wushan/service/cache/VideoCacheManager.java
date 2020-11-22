@@ -38,7 +38,7 @@ public class VideoCacheManager {
     @PostConstruct
     public void init() {
         //暂时不设置过期，只通过LRU淘汰。
-        //需要保证每个id都是有效的，一定不要存放空值。
+        //需要保证每个id都是有效的，一定不要存放空值，更加不能存放无效id
         hotVideoCache = Caffeine.newBuilder()
                 .initialCapacity(1000)
                 .maximumSize(Constant.HOT_VIDEO_COUNT)
@@ -66,22 +66,26 @@ public class VideoCacheManager {
             List<Long> ids = new ArrayList<>(hotKeyList);
             log.info("start second layer initializing");
             for (long id : ids) {
-                Set<Long> relatedIds = videoRepository.findRelatedVideoIds(id);
-                relatedIds.addAll(videoRepository.findRelatedVideoIds_reverse(id));
-                relatedIds.remove(id);
+                List<Long> relatedIds = videoRepository.findRelatedVideoIds(id);
+                List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(id);
+                for (Long reverse : reverseIds) {
+                    if (!relatedIds.contains(reverse)) relatedIds.add(reverse);
+                }
                 for (Long relatedId : relatedIds) {
-                    saveVideo(videoRepository.getOne(relatedId));
+                    videoRepository.findById(relatedId).ifPresentOrElse(this::saveVideo, () -> videoRepository.deleteFromRelated(relatedId));
                 }
             }
             log.info("start third layer initializing");
             int size = hotKeyList.size();
             for (int i = bestIds.size(); i < size; i++) {
                 long id = hotKeyList.get(i);
-                Set<Long> relatedIds = videoRepository.findRelatedVideoIds(id);
-                relatedIds.addAll(videoRepository.findRelatedVideoIds_reverse(id));
-                relatedIds.remove(id);
+                List<Long> relatedIds = videoRepository.findRelatedVideoIds(id);
+                List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(id);
+                for (Long reverse : reverseIds) {
+                    if (!relatedIds.contains(reverse)) relatedIds.add(reverse);
+                }
                 for (Long relatedId : relatedIds) {
-                    saveVideo(videoRepository.getOne(relatedId));
+                    videoRepository.findById(relatedId).ifPresentOrElse(this::saveVideo, () -> videoRepository.deleteFromRelated(relatedId));
                 }
                 if (hotKeyList.size() >= 1500) {
                     break;

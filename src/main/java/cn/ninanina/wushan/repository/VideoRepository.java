@@ -37,14 +37,20 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
      * @param videoId 主视频id
      */
     @Query(value = "select relatedVideos_id from video_relatedVideos where VideoDetail_id = ?1", nativeQuery = true)
-    Set<Long> findRelatedVideoIds(long videoId);
+    List<Long> findRelatedVideoIds(long videoId);
 
     /**
      * 反向寻找相关视频，需要和上面的联合调用
+     *
      * @param videoId 主视频id
      */
     @Query(value = "select VideoDetail_id from video_relatedVideos where relatedVideos_id = ?1", nativeQuery = true)
-    Set<Long> findRelatedVideoIds_reverse(long videoId);
+    List<Long> findRelatedVideoIds_reverse(long videoId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "delete from video_relatedVideos where VideoDetail_id = ?1 or relatedVideos_id = ?1", nativeQuery = true)
+    void deleteFromRelated(long videoId);
 
     @Modifying
     @Transactional

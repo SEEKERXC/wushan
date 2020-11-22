@@ -1,20 +1,18 @@
 package cn.ninanina.wushan.web;
 
-import cn.ninanina.wushan.common.Constant;
 import cn.ninanina.wushan.common.Gender;
+import cn.ninanina.wushan.common.util.EncodeUtil;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.repository.UserRepository;
 import cn.ninanina.wushan.service.CommonService;
 import cn.ninanina.wushan.service.UserService;
+import cn.ninanina.wushan.web.cache.UserCacheManager;
 import cn.ninanina.wushan.web.result.Response;
 import cn.ninanina.wushan.web.result.ResultMsg;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.data.util.Pair;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/user")
@@ -26,11 +24,8 @@ public class UserController extends BaseController {
     private UserService userService;
     @Autowired
     private CommonService commonService;
-
-    @GetMapping("/ping")
-    public Response ping() {
-        return result("成功");
-    }
+    @Autowired
+    private UserCacheManager userCacheManager;
 
     @PostMapping("/register")
     public Response register(@RequestParam("appKey") String appKey,
@@ -41,9 +36,10 @@ public class UserController extends BaseController {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (userRepository.findByUsername(username) != null) return result(ResultMsg.USER_EXIST);
         User user = userService.register(username, password, nickname, gender);
-        getSession().setAttribute(Constant.KEY_USER, user);
+        String token = genToken(appKey, username);
+        userCacheManager.save(token, user);
         log.info("ip {} registered a new user, id: {}", getIp(), user.getId());
-        return result(user);
+        return result(Pair.of(token, user));
     }
 
     @PostMapping("/login")
@@ -53,20 +49,20 @@ public class UserController extends BaseController {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         User user = userService.login(username, password);
         if (user == null) {
-            log.warn("login failed! ip addr: {}, username: {}", getIp(), user);
             return result(ResultMsg.FAILED);
         }
-        getSession().setAttribute(Constant.KEY_USER, user);
-        log.info("user {} logged in.", user.getId());
-        return result(user);
+        String token = genToken(appKey, username);
+        userCacheManager.save(token, user);
+        return result(Pair.of(token, user));
     }
 
     @PostMapping("/logout")
-    public Response logout(@RequestParam("appKey") String appKey) {
+    public Response logout(@RequestParam("appKey") String appKey,
+                           @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (getUser() == null) return result(ResultMsg.NOT_LOGIN);
-        log.info("user {} logged out", getUser().getId());
-        getSession().invalidate();
+        if (getUser(token) == null) return result(ResultMsg.NOT_LOGIN);
+        userCacheManager.delete(token);
+        log.info("user {} logged out", getUser(token).getId());
         return result();
     }
 
@@ -85,11 +81,25 @@ public class UserController extends BaseController {
      * @return 已登录返回SUCCESS，未登录返回NOT_LOGIN
      */
     @GetMapping("/loggedIn")
-    public Response loggedIn(@RequestParam("appKey") String appKey) {
+    public Response loggedIn(@RequestParam("appKey") String appKey,
+                             @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser();
+        User user = getUser(token);
+        log.info("check for token {}, result {}", token, user == null ? "failed" : "success:" + user.getId());
         if (user == null) return result(ResultMsg.NOT_LOGIN);
         else return result(user);
+    }
+
+    /**
+     * 生成用户token
+     */
+    private String genToken(String appKey, String username) {
+        String currentMillis = String.valueOf(System.currentTimeMillis());
+        String token = EncodeUtil.encodeSHA(appKey + username + currentMillis);
+        while (userCacheManager.get(token) != null) {
+            token = EncodeUtil.encodeSHA(appKey + username + currentMillis);
+        }
+        return token;
     }
 
 }

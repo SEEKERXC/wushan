@@ -13,7 +13,7 @@ import java.util.Set;
 @Entity
 @Table(name = "video")
 @EqualsAndHashCode(of = "id")
-@JsonIgnoreProperties(value = {"hibernateLazyInitializer"})
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
 public class VideoDetail {
     @Id
     @GeneratedValue

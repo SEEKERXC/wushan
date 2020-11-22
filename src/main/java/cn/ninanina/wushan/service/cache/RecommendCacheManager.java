@@ -27,7 +27,7 @@ public class RecommendCacheManager {
         recommendedCache = Caffeine.newBuilder()
                 .initialCapacity(100)
                 .maximumSize(1000)
-                .expireAfterAccess(3600, TimeUnit.SECONDS) //过期时间和会话过期时间一样
+                .expireAfterAccess(3600, TimeUnit.SECONDS)
                 .removalListener((RemovalListener<String, Set<Long>>) (s, longs, removalCause) -> {
                     //TODO:appKey过期处理
                 })

@@ -1,28 +1,24 @@
 package cn.ninanina.wushan.web;
 
-import cn.ninanina.wushan.common.Constant;
 import cn.ninanina.wushan.domain.User;
+import cn.ninanina.wushan.web.cache.UserCacheManager;
 import cn.ninanina.wushan.web.result.Response;
 import cn.ninanina.wushan.web.result.ResultMsg;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 
+@Controller
 public abstract class BaseController {
+    @Autowired
+    private UserCacheManager userCacheManager;
+
     HttpServletRequest getRequest() {
         return ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
-    }
-
-    /**
-     * 一旦获取了session，就设置一个小时过期
-     */
-    HttpSession getSession() {
-        HttpSession session=getRequest().getSession();
-        session.setMaxInactiveInterval(3600);
-        return getRequest().getSession();
     }
 
     protected Response result() {
@@ -50,8 +46,10 @@ public abstract class BaseController {
         }
     }
 
-    protected User getUser() {
-        return (User) getSession().getAttribute(Constant.KEY_USER);
+    protected User getUser(String token) {
+        if (!StringUtils.isEmpty(token))
+            return userCacheManager.get(token);
+        else return null;
     }
 
 }

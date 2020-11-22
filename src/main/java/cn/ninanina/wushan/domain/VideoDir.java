@@ -19,6 +19,9 @@ public class VideoDir {
     @Column(nullable = false)
     private String name;
 
+    @Column
+    private String cover;
+
     @Column(nullable = false)
     private Long createTime;
 
@@ -27,6 +30,9 @@ public class VideoDir {
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer count;
+
+    @Column(nullable = false, columnDefinition = "bit(1) default true")
+    private Boolean isPublic;
 
     @ManyToOne
     @JoinColumn(name = "user_id", referencedColumnName = "id")

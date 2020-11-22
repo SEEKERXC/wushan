@@ -41,14 +41,13 @@ public interface VideoService {
     VideoDetail getVideoDetail(@Nonnull Long videoId, User user);
 
     /**
-     * 获取相关视频。先在数据库中查询相关视频id，如果没有则在使用webmagic进行爬取。
-     * 初期设计webmagic爬虫的时候，无法考虑存相关视频，而只有当获取了足够多视频之后才可以加入相关视频。
+     * 首先获取一级相关视频，一般有20-50个，获取完了之后获取二级相关，一般有1000个左右。
      *
      * @param videoId 视频id
      * @param limit   相关视频数量
      * @return 相关视频列表
      */
-    List<VideoDetail> relatedVideos(@Nonnull Long videoId);
+    List<VideoDetail> relatedVideos(@Nonnull Long videoId, @Nonnull Integer offset, @Nonnull Integer limit);
 
     /**
      * 根据关键词搜索视频。一般用户都是用中文搜索，根据标题和标签进行匹配，并且同时进行中英文匹配。后期会考虑根据视频评论来匹配

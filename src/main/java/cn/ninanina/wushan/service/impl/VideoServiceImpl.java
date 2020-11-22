@@ -26,6 +26,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.Version;
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -172,19 +173,43 @@ public class VideoServiceImpl implements VideoService {
 
     //TODO:获取相关视频，高优先级
     @Override
-    public List<VideoDetail> relatedVideos(@Nonnull Long videoId) {
-        Set<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
-        relatedIds.addAll(videoRepository.findRelatedVideoIds_reverse(videoId));
+    public List<VideoDetail> relatedVideos(@Nonnull Long videoId, @Nonnull Integer offset, @Nonnull Integer limit) {
+        List<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
+        List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(videoId);
+        for (Long id : reverseIds) {
+            if (!relatedIds.contains(id)) relatedIds.add(id);
+        }
         relatedIds.remove(videoId);
-        Set<VideoDetail> result = new HashSet<>();
+        List<VideoDetail> result = new ArrayList<>(limit);
         for (long id : relatedIds) {
-            result.add(videoRepository.getOne(id));
+            if (--offset >= 0) continue;
+            videoRepository.findById(id).ifPresentOrElse(result::add, () -> videoRepository.deleteFromRelated(id));
+            if (result.size() >= limit) break;
         }
-        if (result.size() < 10) {
-            //TODO:获取二级关联视频
+        if (result.size() < limit) {
+            for (Long id : relatedIds) {
+                boolean completed = false;
+                List<Long> secondRelatedIds = videoRepository.findRelatedVideoIds(id);
+                List<Long> secondReverseIds = videoRepository.findRelatedVideoIds_reverse(id);
+                for (Long relatedId : secondRelatedIds) {
+                    if (!relatedIds.contains(relatedId)) relatedIds.add(relatedId);
+                }
+                for (Long reverseId : secondReverseIds) {
+                    if (!relatedIds.contains(reverseId))
+                        relatedIds.add(reverseId);
+                }
+                for (Long relatedId : relatedIds) {
+                    if (--offset >= 0) continue;
+                    videoRepository.findById(relatedId).ifPresentOrElse(result::add, () -> videoRepository.deleteFromRelated(relatedId));
+                    if (result.size() >= limit) {
+                        completed = true;
+                        break;
+                    }
+                }
+                if (completed) break;
+            }
         }
-        log.info("get related videos, size: {}", result.size());
-        return new ArrayList<>(result);
+        return result;
     }
 
     //TODO:设置同义词
@@ -284,6 +309,8 @@ public class VideoServiceImpl implements VideoService {
         collectedVideos.add(videoDetail);
         dir.setUpdateTime(System.currentTimeMillis());
         dir.setCount(dir.getCount() + 1);
+        //TODO:设置收藏夹封面为本地图片
+        dir.setCover(videoDetail.getCoverUrl());
         log.info("collected video, dir id: {}, video id: {}", dirId, videoId);
         videoDirRepository.save(dir);
         return true;

@@ -9,11 +9,10 @@ import cn.ninanina.wushan.repository.VideoDirRepository;
 import cn.ninanina.wushan.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
 @Service
@@ -50,6 +49,8 @@ public class UserServiceImp implements UserService {
     @Override
     public User login(String username, String password) {
         User user = userRepository.findByUsernameAndPassword(username, password);
+        log.info("user login, username {}, password {}, result {}", username, password, user == null ? "failed" : "success:" + user.getId());
+        if (user == null) return null;
         user.setLastLoginTime(System.currentTimeMillis());
         userRepository.save(user);
         return user;
