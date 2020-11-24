@@ -1,6 +1,7 @@
 package cn.ninanina.wushan.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -9,9 +10,10 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "collect")
+@Table(name = "playlist")
 @EqualsAndHashCode(of = "id")
-public class VideoDir {
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
+public class Playlist {
     @Id
     @GeneratedValue
     private Long id;
@@ -36,10 +38,19 @@ public class VideoDir {
 
     @ManyToOne
     @JoinColumn(name = "user_id", referencedColumnName = "id")
-    @JsonIgnore
     private User user;
 
-    @ManyToMany(mappedBy = "videoDirs", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JsonIgnore
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "video_collect",
+            joinColumns = {@JoinColumn(name = "dir_id", referencedColumnName = "id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
     private List<VideoDetail> collectedVideos;
+
+    @JsonIgnore
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "video_collect_tags",
+            joinColumns = {@JoinColumn(name = "dir_id", referencedColumnName = "id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "tag_id", referencedColumnName = "id", nullable = false)})
+    private List<TagDetail> collectedTags;
 }

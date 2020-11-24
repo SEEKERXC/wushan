@@ -1,15 +1,15 @@
 package cn.ninanina.wushan.web;
 
-import cn.ninanina.wushan.common.util.EncodeUtil;
 import cn.ninanina.wushan.domain.Comment;
-import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.domain.VideoDir;
+import cn.ninanina.wushan.domain.Playlist;
 import cn.ninanina.wushan.repository.TagRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.CommonService;
+import cn.ninanina.wushan.service.PlaylistService;
 import cn.ninanina.wushan.service.TagService;
 import cn.ninanina.wushan.service.VideoService;
+import cn.ninanina.wushan.service.cache.VideoCacheManager;
 import cn.ninanina.wushan.web.result.Response;
 import cn.ninanina.wushan.web.result.ResultMsg;
 import lombok.extern.slf4j.Slf4j;
@@ -29,11 +29,15 @@ public class VideoController extends BaseController {
     @Autowired
     private VideoRepository videoRepository;
     @Autowired
+    private VideoCacheManager videoCacheManager;
+    @Autowired
     private TagService tagService;
     @Autowired
     private TagRepository tagRepository;
     @Autowired
     private CommonService commonService;
+    @Autowired
+    private PlaylistService playlistService;
 
     @GetMapping("/recommend")
     public Response recommendVideos(@RequestParam("appKey") String appKey,
@@ -42,9 +46,9 @@ public class VideoController extends BaseController {
                                     String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (limit <= 0 || limit >= 50) return result(ResultMsg.ParamError);
-        User user = getUser(token);
+        Long userId = getUserId(token);
         log.info("get recommendVideos, appKey: {}, type: {} ,limit: {}", appKey, type, limit);
-        return result(videoService.recommendVideos(user, appKey, type, limit));
+        return result(videoService.recommendVideos(userId, appKey, type, limit));
     }
 
     /**
@@ -59,10 +63,10 @@ public class VideoController extends BaseController {
                                 String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        User user = getUser(token);
+        Long userId = getUserId(token);
         VideoDetail videoDetail;
         log.info("appKey {} get video detail: {}", appKey, id);
-        videoDetail = videoService.getVideoDetail(id, user);
+        videoDetail = videoService.getVideoDetail(id, userId);
         return result(videoDetail);
     }
 
@@ -136,7 +140,7 @@ public class VideoController extends BaseController {
         }
         if (offset < 0 || limit <= 0 || limit >= 50) return result(ResultMsg.ParamError);
         List<VideoDetail> result = videoService.relatedVideos(id, offset, limit);
-        log.info("get related videos, offset: {}, limit: {}", offset, limit);
+        log.info("get related videos, videoId: {}, offset: {}, limit: {}", id, offset, limit);
         return result(result);
     }
 
@@ -186,12 +190,12 @@ public class VideoController extends BaseController {
                             Long parentId) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
         if (StringUtils.isEmpty(content.trim())) return result(ResultMsg.EMPTY_CONTENT);
-        Comment comment = videoService.commentOn(user, id, content, parentId);
+        Comment comment = videoService.commentOn(userId, id, content, parentId);
         if (comment == null) return result(ResultMsg.INVALID_VIDEO_ID);
-        log.info("user {} commented on video {}, content: {}, commentId: {}", user.getId(), id, content, comment.getId());
+        log.info("user {} commented on video {}, content: {}, commentId: {}", userId, id, content, comment.getId());
         return result(comment);
     }
 
@@ -208,16 +212,17 @@ public class VideoController extends BaseController {
                                  @RequestParam("dirId") Long dirId,
                                  @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        if (videoRepository.findById(videoId).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
-        if (videoService.collect(videoId, dirId)) {
-            return result(ResultMsg.COLLECT_SUCCESS);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
+        if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        Playlist playlist = playlistService.possess(userId, dirId);
+        if (playlist == null) return result(ResultMsg.COLLECT_WRONG_DIR);
+        if (playlistService.collect(playlist, videoDetail)) {
+            return result();
         } else {
-            result(ResultMsg.COLLECT_ALREADY);
+            return result(ResultMsg.COLLECT_ALREADY);
         }
-        return result();
     }
 
     @PostMapping("/collect/cancel")
@@ -226,11 +231,13 @@ public class VideoController extends BaseController {
                                   @RequestParam("dirId") Long dirId,
                                   @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        if (videoRepository.findById(videoId).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
-        if (videoService.cancelCollect(videoId, dirId)) {
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        Playlist playlist = playlistService.possess(userId, dirId);
+        VideoDetail videoDetail = videoRepository.findById(videoId).orElse(null);
+        if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        if (playlist == null) return result(ResultMsg.COLLECT_WRONG_DIR);
+        if (playlistService.cancelCollect(playlist, videoDetail)) {
             return result();
         } else return result(ResultMsg.COLLECT_WRONG_DIR);
 
@@ -241,15 +248,23 @@ public class VideoController extends BaseController {
      *
      * @return 收藏的视频列表
      */
-    @GetMapping("/collect")
-    public Response collectedDirs(@RequestParam("appKey") String appKey,
-                                  @RequestParam("token") String token) {
+    @GetMapping("/playlist")
+    public Response getPlaylists(@RequestParam("appKey") String appKey,
+                                 @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        List<VideoDir> result = videoService.collectedDirs(user);
-        log.info("user get collected dirs, userid: {}, dir list size: {}", user.getId(), result.size());
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        List<Playlist> result = playlistService.listAll(userId);
+        log.info("user get collected dirs, userid: {}, dir list size: {}", userId, result.size());
         return result(result);
+    }
+
+    @GetMapping("/playlist/videos")
+    public Response getPlayListVideos(@RequestParam("appKey") String appKey,
+                                      @RequestParam("id") Long id) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        log.info("get videos of playlist {}", id);
+        return result(playlistService.listVideos(id));
     }
 
     /**
@@ -259,42 +274,42 @@ public class VideoController extends BaseController {
      * @param name   收藏夹名字
      * @return 收藏夹
      */
-    @PostMapping("/collect/create")
+    @PostMapping("/playlist/create")
     public Response createCollectDir(@RequestParam("appKey") String appKey,
                                      @RequestParam("name") String name,
                                      @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        VideoDir videoDir = videoService.createDir(user, name);
-        return result(videoDir);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        Playlist playlist = playlistService.create(userId, name);
+        return result(playlist);
     }
 
     /**
      * 删除收藏夹
      */
-    @PostMapping("/collect/delete")
+    @PostMapping("/playlist/delete")
     public Response deleteCollectDir(@RequestParam("appKey") String appKey,
                                      @RequestParam("dirId") Long dirId,
                                      @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
-        videoService.removeDir(dirId);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        if (playlistService.possess(userId, dirId) == null) return result(ResultMsg.COLLECT_WRONG_DIR);
+        playlistService.delete(dirId);
         return result();
     }
 
-    @PostMapping("/collect/rename")
+    @PostMapping("/playlist/rename")
     public Response renameCollectDir(@RequestParam("appKey") String appKey,
                                      @RequestParam("dirId") Long dirId,
                                      @RequestParam("name") String name,
                                      @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        if (!videoService.possessDir(user, dirId)) return result(ResultMsg.COLLECT_WRONG_DIR);
-        VideoDir dir = videoService.renameDir(dirId, name);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        if (playlistService.possess(userId, dirId) == null) return result(ResultMsg.COLLECT_WRONG_DIR);
+        Playlist dir = playlistService.rename(dirId, name);
         return result(dir);
     }
 
@@ -308,10 +323,10 @@ public class VideoController extends BaseController {
                                   @RequestParam("id") Long id,
                                   @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
         if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        videoService.download(user, id);
+        videoService.download(userId, id);
         return result();
     }
 

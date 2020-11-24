@@ -1,6 +1,7 @@
 package cn.ninanina.wushan.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -11,6 +12,7 @@ import java.util.List;
 @Table(name = "tag")
 @Data
 @EqualsAndHashCode(of = "id")
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
 public class TagDetail {
     @Id
     @GeneratedValue
@@ -28,4 +30,8 @@ public class TagDetail {
     @ManyToMany(mappedBy = "tags", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<VideoDetail> videos;
+
+    @ManyToMany(mappedBy = "collectedTags", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Playlist> playlists;
 }

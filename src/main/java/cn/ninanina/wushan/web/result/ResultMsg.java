@@ -11,7 +11,6 @@ public enum ResultMsg {
     USER_EXIST("000011", "用户名已存在"),
     EMPTY_CONTENT("000004", "空内容错误"),
     COLLECT_WRONG_DIR("000005", "错误文件夹"),
-    COLLECT_SUCCESS("000006", "收藏成功"),
     COLLECT_ALREADY("000010", "已收藏过了"),
     COLLECT_CANCEL("000007", "取消收藏成功"),
 

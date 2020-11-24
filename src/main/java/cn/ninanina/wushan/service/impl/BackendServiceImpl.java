@@ -132,11 +132,7 @@ public class BackendServiceImpl implements BackendService {
     @Override
     public void startIndexing() {
         log.info("started indexing");
-        FSDirectory directory = LuceneUtil.get().getDirectory();
-        Analyzer analyzer = LuceneUtil.get().getAnalyzer();
-        IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_4_10_4, analyzer);
-        config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
-        IndexWriter indexWriter = new IndexWriter(directory, config);
+        IndexWriter indexWriter = LuceneUtil.get().getIndexWriter();
         AtomicLong count = new AtomicLong(1);
         indexingExecutorService.scheduleAtFixedRate(() -> {
             Long watermark = videoRepository.findIndexingWatermark();

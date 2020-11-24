@@ -1,10 +1,8 @@
 package cn.ninanina.wushan.service;
 
 import cn.ninanina.wushan.domain.Comment;
-import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.domain.VideoDir;
-import com.sun.istack.NotNull;
+import cn.ninanina.wushan.domain.Playlist;
 import org.apache.commons.lang3.tuple.Pair;
 
 import javax.annotation.Nonnull;
@@ -23,22 +21,15 @@ public interface VideoService {
      * <p>首先取validVideoCache里面的值，即当前有效视频。有效视频取完后，
      * <p>然后根据用户收藏、下载、浏览过的视频推荐，
      * <p>如果没有任何记录或者记录很少，则从选定的精华视频中推荐。
-     *
-     * @param user   用户信息
-     * @param appKey 用来区分app
-     * @return 推荐视频列表，视频链接不一定有效
      */
-    List<VideoDetail> recommendVideos(User user, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit);
+    List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit);
 
     /**
      * 获取指定视频的有效信息，即更新视频链接，当客户端请求视频详情，并且视频链接失效时才调用。
      * <p>视频实际有效为3小时，我们规定超过2.5小时则失效。
      * <p>如果数据库/缓存中的视频链接还有效，则不打开页面重新请求，否则就调用selenium的接口进行更新。
-     *
-     * @param videoId 视频id
-     * @return 视频当前有效信息
      */
-    VideoDetail getVideoDetail(@Nonnull Long videoId, User user);
+    VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId);
 
     /**
      * 首先获取一级相关视频，一般有20-50个，获取完了之后获取二级相关，一般有1000个左右。
@@ -67,84 +58,17 @@ public interface VideoService {
      * @param parentId 评论父id,可为空
      * @return 生成的评论信息
      */
-    Comment commentOn(@Nonnull User user, @Nonnull Long videoId, @Nonnull String content, @Nullable Long parentId);
-
-    /**
-     * 新建收藏夹
-     *
-     * @param user 用户
-     * @param name 收藏夹名字
-     * @return 创建结果
-     */
-    VideoDir createDir(@Nonnull User user, @Nonnull String name);
-
-    /**
-     * 查看收藏夹是否属于用户
-     *
-     * @param user  用户
-     * @param dirId 收藏夹id
-     * @return 属于返回true，不属于返回false
-     */
-    Boolean possessDir(@Nonnull User user, @Nonnull Long dirId);
-
-    /**
-     * 删除收藏夹
-     *
-     * @param user 用户
-     * @param id   收藏夹id
-     */
-    void removeDir(@Nonnull Long id);
-
-    /**
-     * 重命名收藏夹
-     *
-     * @param id   收藏夹id
-     * @param name 新名字
-     */
-    VideoDir renameDir(@Nonnull Long id, @Nonnull String name);
-
-    /**
-     * 获取用户的收藏文件夹列表
-     *
-     * @param user 用户
-     */
-    List<VideoDir> collectedDirs(User user);
-
-    /**
-     * 收藏视频/取消收藏
-     *
-     * @param user    用户
-     * @param videoId 视频id
-     * @param dirId   文件夹id
-     * @return true表示收藏成功，false表示已收藏过
-     */
-    Boolean collect(@Nonnull Long videoId, @Nonnull Long dirId);
-
-    /**
-     * 取消收藏
-     *
-     * @param videoId 视频id
-     * @param dirId   收藏夹id
-     * @return true表示取消成功，false表示收藏夹为空或者收藏夹不包含给定video
-     */
-    Boolean cancelCollect(@Nonnull Long videoId, @Nonnull Long dirId);
+    Comment commentOn(@Nonnull Long userId, @Nonnull Long videoId, @Nonnull String content, @Nullable Long parentId);
 
     /**
      * 获取用户看过的视频列表，分段获取
-     *
-     * @param user   用户
-     * @param offset offset
-     * @param limit  limit
      */
-    List<VideoDetail> viewedVideos(@Nonnull User user, @Nonnull Integer offset, @Nonnull Integer limit);
+    List<VideoDetail> viewedVideos(@Nonnull Long userId, @Nonnull Integer offset, @Nonnull Integer limit);
 
     /**
      * 下载视频，做个记录方便推荐。因为下载的视频一定是用户最喜欢的，权重比收藏还要高。
-     *
-     * @param user    下载的用户
-     * @param videoId 下载的视频id
      */
-    void download(@Nonnull User user, @Nonnull Long videoId);
+    void download(@Nonnull Long userId, @Nonnull Long videoId);
 
     /**
      * 用户退出视频播放

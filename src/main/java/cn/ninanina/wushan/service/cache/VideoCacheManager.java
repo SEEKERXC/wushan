@@ -21,6 +21,8 @@ import java.util.*;
 /**
  * 初始化这个cache时，从精选视频中获取，保存在best_videos.txt文件里面
  * 实现多级相关，直到视频数量达到1500即可
+ * 每当视频被播放、收藏、下载，都会将之写入此缓存
+ * 如果视频被取消收藏、被不喜欢、被删除下载，都不需要从缓存中删除。
  */
 @Component("videoCacheManager")
 @Slf4j
@@ -46,8 +48,8 @@ public class VideoCacheManager {
                 .removalListener((RemovalListener<Long, VideoDetail>)
                         (aLong, videoDetail, removalCause) -> hotKeyList.remove(aLong))
                 .build(id -> {
-                    VideoDetail videoDetail = videoRepository.findById(id).orElse(new VideoDetail());
-                    hotKeyList.add(videoDetail.getId());
+                    VideoDetail videoDetail = videoRepository.findById(id).orElse(null);
+                    if (videoDetail != null) hotKeyList.add(videoDetail.getId());
                     return videoDetail;
                 });
         //程序初始化时，先从数据库中取一些精选的视频，大概1500个

@@ -3,13 +3,12 @@ package cn.ninanina.wushan.service.impl;
 import cn.ninanina.wushan.common.Constant;
 import cn.ninanina.wushan.common.Gender;
 import cn.ninanina.wushan.domain.User;
-import cn.ninanina.wushan.domain.VideoDir;
+import cn.ninanina.wushan.domain.Playlist;
 import cn.ninanina.wushan.repository.UserRepository;
-import cn.ninanina.wushan.repository.VideoDirRepository;
+import cn.ninanina.wushan.repository.PlaylistRepository;
 import cn.ninanina.wushan.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +20,7 @@ public class UserServiceImp implements UserService {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private VideoDirRepository videoDirRepository;
+    private PlaylistRepository playlistRepository;
 
     @Override
     public User register(String username, String password, String nickname, Gender gender) {
@@ -36,13 +35,14 @@ public class UserServiceImp implements UserService {
         user.setRegisterTime(System.currentTimeMillis());
         user.setLastLoginTime(System.currentTimeMillis());
         user = userRepository.save(user);
-        VideoDir videoDir = new VideoDir();
-        videoDir.setName("默认收藏夹");
-        videoDir.setCreateTime(System.currentTimeMillis());
-        videoDir.setUpdateTime(System.currentTimeMillis());
-        videoDir.setCount(0);
-        videoDir.setUser(user);
-        videoDirRepository.save(videoDir);
+        Playlist playlist = new Playlist();
+        playlist.setName("默认收藏夹");
+        playlist.setCreateTime(System.currentTimeMillis());
+        playlist.setUpdateTime(System.currentTimeMillis());
+        playlist.setIsPublic(true);
+        playlist.setCount(0);
+        playlist.setUser(user);
+        playlistRepository.save(playlist);
         return user;
     }
 

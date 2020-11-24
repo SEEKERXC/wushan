@@ -7,7 +7,6 @@ import lombok.EqualsAndHashCode;
 
 import javax.persistence.*;
 import java.util.List;
-import java.util.Set;
 
 @Data
 @Entity
@@ -65,12 +64,9 @@ public class VideoDetail {
             inverseJoinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)})
     private List<User> viewedUsers;
 
+    @ManyToMany(mappedBy = "collectedVideos", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_collect",
-            joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "dir_id", referencedColumnName = "id", nullable = false)})
-    private List<VideoDir> videoDirs;
+    private List<Playlist> playlists;
 
     @JsonIgnore
     @ManyToMany(fetch = FetchType.LAZY)

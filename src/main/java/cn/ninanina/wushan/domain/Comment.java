@@ -1,6 +1,7 @@
 package cn.ninanina.wushan.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -10,6 +11,7 @@ import javax.persistence.*;
 @Table(name = "comment")
 @Data
 @EqualsAndHashCode(of = "id")
+@JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
 public class Comment {
     @Id
     @GeneratedValue

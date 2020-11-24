@@ -46,7 +46,7 @@ public abstract class BaseController {
         }
     }
 
-    protected User getUser(String token) {
+    protected Long getUserId(String token) {
         if (!StringUtils.isEmpty(token))
             return userCacheManager.get(token);
         else return null;

@@ -37,7 +37,7 @@ public class UserController extends BaseController {
         if (userRepository.findByUsername(username) != null) return result(ResultMsg.USER_EXIST);
         User user = userService.register(username, password, nickname, gender);
         String token = genToken(appKey, username);
-        userCacheManager.save(token, user);
+        userCacheManager.save(token, user.getId());
         log.info("ip {} registered a new user, id: {}", getIp(), user.getId());
         return result(Pair.of(token, user));
     }
@@ -52,7 +52,7 @@ public class UserController extends BaseController {
             return result(ResultMsg.FAILED);
         }
         String token = genToken(appKey, username);
-        userCacheManager.save(token, user);
+        userCacheManager.save(token, user.getId());
         return result(Pair.of(token, user));
     }
 
@@ -60,9 +60,10 @@ public class UserController extends BaseController {
     public Response logout(@RequestParam("appKey") String appKey,
                            @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (getUser(token) == null) return result(ResultMsg.NOT_LOGIN);
+        if (getUserId(token) == null) return result(ResultMsg.NOT_LOGIN);
+        long userId = userCacheManager.get(token);
         userCacheManager.delete(token);
-        log.info("user {} logged out", getUser(token).getId());
+        log.info("user {} logged out", userId);
         return result();
     }
 
@@ -84,10 +85,10 @@ public class UserController extends BaseController {
     public Response loggedIn(@RequestParam("appKey") String appKey,
                              @RequestParam("token") String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        User user = getUser(token);
-        log.info("check for token {}, result {}", token, user == null ? "failed" : "success:" + user.getId());
-        if (user == null) return result(ResultMsg.NOT_LOGIN);
-        else return result(user);
+        Long userId = getUserId(token);
+        log.info("check for token {}, result {}", token, userId == null ? "failed" : "success:" + userId);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        else return result();
     }
 
     /**

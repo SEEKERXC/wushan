@@ -5,8 +5,11 @@ import lombok.SneakyThrows;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.IndexWriter;
+import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.Version;
 import org.wltea.analyzer.lucene.IKAnalyzer;
 
 import java.io.File;
@@ -19,9 +22,10 @@ public class LuceneUtil {
     private final FSDirectory directory;
     private IndexReader indexReader;
     private IndexSearcher indexSearcher;
+    private IndexWriter indexWriter;
 
     @SneakyThrows
-    private LuceneUtil(){
+    private LuceneUtil() {
         directory = FSDirectory.open(new File(Constant.INDEX_DIR));
     }
 
@@ -41,7 +45,7 @@ public class LuceneUtil {
         this.indexReader = indexReader;
     }
 
-    public IndexSearcher getIndexSearcher() throws IOException {
+    public synchronized IndexSearcher getIndexSearcher() throws IOException {
         if (indexSearcher == null) {
             indexReader = DirectoryReader.open(directory);
             indexSearcher = new IndexSearcher(indexReader);
@@ -51,6 +55,15 @@ public class LuceneUtil {
 
     public void setIndexSearcher(IndexSearcher indexSearcher) {
         this.indexSearcher = indexSearcher;
+    }
+
+    public synchronized IndexWriter getIndexWriter() throws IOException {
+        if (indexWriter == null) {
+            IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_4_10_4, analyzer);
+            config.setOpenMode(IndexWriterConfig.OpenMode.CREATE_OR_APPEND);
+            indexWriter = new IndexWriter(directory, config);
+        }
+        return indexWriter;
     }
 
 }

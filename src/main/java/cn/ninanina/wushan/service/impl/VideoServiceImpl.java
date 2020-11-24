@@ -4,15 +4,16 @@ import cn.ninanina.wushan.common.util.LuceneUtil;
 import cn.ninanina.wushan.domain.Comment;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.domain.VideoDir;
+import cn.ninanina.wushan.domain.Playlist;
 import cn.ninanina.wushan.repository.CommentRepository;
 import cn.ninanina.wushan.repository.UserRepository;
-import cn.ninanina.wushan.repository.VideoDirRepository;
+import cn.ninanina.wushan.repository.PlaylistRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.VideoService;
 import cn.ninanina.wushan.service.cache.RecommendCacheManager;
 import cn.ninanina.wushan.service.cache.VideoAudienceCacheManager;
 import cn.ninanina.wushan.service.cache.VideoCacheManager;
+import cn.ninanina.wushan.service.driver.DriverManager;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -20,13 +21,9 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreDoc;
-import org.apache.lucene.search.TopDocs;
+import org.apache.lucene.search.*;
 import org.apache.lucene.util.Version;
 import org.openqa.selenium.By;
-import org.openqa.selenium.NoSuchSessionException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -63,6 +60,9 @@ public class VideoServiceImpl implements VideoService {
     private VideoAudienceCacheManager audienceCacheManager;
 
     @Autowired
+    private DriverManager driverManager;
+
+    @Autowired
     private VideoRepository videoRepository;
 
     @Autowired
@@ -72,27 +72,10 @@ public class VideoServiceImpl implements VideoService {
     private CommentRepository commentRepository;
 
     @Autowired
-    private VideoDirRepository videoDirRepository;
-
-    /**
-     * 目前只有本机的driver，之后需要维持一个driver的map，用来操作机器的浏览器
-     */
-    private WebDriver driver;
-
-    /**
-     * TODO: 均匀分摊视频链接请求的压力，目前低优先级，日后最高优先级
-     */
-    @PostConstruct
-    public void init() {
-        System.setProperty("webdriver.chrome.driver", "/opt/WebDriver/bin/chromedriver");
-        ChromeOptions options = new ChromeOptions();
-        options.setExperimentalOption("debuggerAddress", "127.0.0.1:9222");
-        driver = new ChromeDriver(options);
-        log.info("webdriver initialized. now title: {}", driver.getTitle());
-    }
+    private PlaylistRepository playlistRepository;
 
     @Override
-    public List<VideoDetail> recommendVideos(User user, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit) {
+    public List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit) {
         switch (type) {
             case "hot":
                 return hotVideos(appKey, limit);
@@ -109,11 +92,13 @@ public class VideoServiceImpl implements VideoService {
                 System.out.println("lesbian");
                 break;
         }
+        User user = null;
+        if (userId != null) user = userRepository.getOne(userId);
         if (user == null) return hotVideos(appKey, limit);
         List<VideoDetail> viewedVideos = user.getViewedVideos();
-        List<VideoDir> videoDirs = user.getVideoDirs();
+        List<Playlist> playlists = user.getPlaylists();
         List<VideoDetail> collectedVideos = new ArrayList<>();
-        for (VideoDir dir : videoDirs) {
+        for (Playlist dir : playlists) {
             collectedVideos.addAll(dir.getCollectedVideos());
         }
         List<VideoDetail> downloadedVideos = user.getDownloadedVideos();
@@ -122,7 +107,8 @@ public class VideoServiceImpl implements VideoService {
                 && CollectionUtils.isEmpty(downloadedVideos)) {
             return hotVideos(appKey, limit);
         }
-        return null;
+        //TODO:根据收藏、下载、观看过的视频进行推荐
+        return hotVideos(appKey, limit);
     }
 
     private List<VideoDetail> hotVideos(@Nonnull String appKey, @Nonnull Integer limit) {
@@ -143,7 +129,7 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public VideoDetail getVideoDetail(@Nonnull Long videoId, User user) {
+    public VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId) {
         VideoDetail detail = videoCacheManager.getVideo(videoId);
         if (StringUtils.isEmpty(detail.getSrc()) || !detail.getSrc().contains("xvideos")) {
             getVideoSrc(detail);
@@ -158,7 +144,8 @@ public class VideoServiceImpl implements VideoService {
             getVideoSrc(detail);
             if (StringUtils.isEmpty(detail.getSrc())) return detail;
         }
-        if (user != null) {
+        if (userId != null) {
+            User user = userRepository.getOne(userId);
             List<VideoDetail> viewedVideos = user.getViewedVideos();
             if (CollectionUtils.isEmpty(viewedVideos)) {
                 viewedVideos = new ArrayList<>();
@@ -226,14 +213,15 @@ public class VideoServiceImpl implements VideoService {
             ScoreDoc scoreDoc = topDocs.scoreDocs[i];
             Document document = indexSearcher.doc(scoreDoc.doc);
             long id = Long.parseLong(document.get("id"));
-            VideoDetail videoDetail = videoRepository.getOne(id);
-            result.add(videoDetail);
+            videoRepository.findById(id).ifPresent(result::add);
+            //TODO：删除被删除视频的索引
         }
         return result;
     }
 
     @Override
-    public Comment commentOn(@Nonnull User user, @Nonnull Long videoId, @Nonnull String content, @Nullable Long parentId) {
+    public Comment commentOn(@Nonnull Long userId, @Nonnull Long videoId, @Nonnull String content, @Nullable Long parentId) {
+        User user = userRepository.getOne(userId);
         Comment comment = new Comment();
         comment.setContent(content);
         //被评论的视频需要放到热点视频中
@@ -248,105 +236,15 @@ public class VideoServiceImpl implements VideoService {
         return comment;
     }
 
-    @Override
-    public VideoDir createDir(@Nonnull User user, @Nonnull String name) {
-        List<VideoDir> videoDirs = user.getVideoDirs();
-        if (CollectionUtils.isEmpty(videoDirs)) {
-            videoDirs = new ArrayList<>();
-            user.setVideoDirs(videoDirs);
-        }
-        if (videoDirs.size() >= 50) {
-            log.warn("user {} wanna create more than 50 dirs, refused.", user.getId());
-            return null;
-        }
-        VideoDir videoDir = new VideoDir();
-        videoDir.setName(name);
-        videoDir.setCount(0);
-        videoDir.setUser(user);
-        videoDir.setCreateTime(System.currentTimeMillis());
-        videoDir.setUpdateTime(System.currentTimeMillis());
-        videoDir = videoDirRepository.save(videoDir);
-        log.info("user created video dir, user id: {}, dir id: {}", user.getId(), videoDir.getId());
-        return videoDir;
-    }
-
-    @Override
-    public Boolean possessDir(@Nonnull User user, @Nonnull Long dirId) {
-        List<VideoDir> dirs = user.getVideoDirs();
-        VideoDir videoDir = videoDirRepository.getOne(dirId);
-        return dirs.contains(videoDir);
-    }
-
-    @Override
-    public void removeDir(@Nonnull Long id) {
-        videoDirRepository.deleteById(id);
-        log.info("removed dir, id:{}", id);
-    }
-
-    @Override
-    public VideoDir renameDir(@Nonnull Long id, @Nonnull String name) {
-        VideoDir dir = videoDirRepository.getOne(id);
-        dir.setName(name);
-        dir.setUpdateTime(System.currentTimeMillis());
-        dir = videoDirRepository.save(dir);
-        log.info("renamed dir, id: {} new name: {}", id, name);
-        return dir;
-    }
-
-    @Override
-    public Boolean collect(@Nonnull Long videoId, @Nonnull Long dirId) {
-        VideoDir dir = videoDirRepository.getOne(dirId);
-        List<VideoDetail> collectedVideos = dir.getCollectedVideos();
-        if (CollectionUtils.isEmpty(collectedVideos)) {
-            collectedVideos = new ArrayList<>();
-            dir.setCollectedVideos(collectedVideos);
-        }
-        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
-        //已收藏过
-        if (collectedVideos.contains(videoDetail)) {
-            return false;
-        }
-        collectedVideos.add(videoDetail);
-        dir.setUpdateTime(System.currentTimeMillis());
-        dir.setCount(dir.getCount() + 1);
-        //TODO:设置收藏夹封面为本地图片
-        dir.setCover(videoDetail.getCoverUrl());
-        log.info("collected video, dir id: {}, video id: {}", dirId, videoId);
-        videoDirRepository.save(dir);
-        return true;
-    }
-
-    //取消收藏的video直接从数据库获取，不放到cache中
-    @Override
-    public Boolean cancelCollect(@Nonnull Long videoId, @Nonnull Long dirId) {
-        VideoDir dir = videoDirRepository.getOne(dirId);
-        List<VideoDetail> collectedVideos = dir.getCollectedVideos();
-        if (CollectionUtils.isEmpty(collectedVideos)) {
-            return false;
-        }
-        VideoDetail videoDetail = videoRepository.getOne(videoId);
-        if (!collectedVideos.contains(videoDetail)) return false;
-        collectedVideos.remove(videoDetail);
-        dir.setCount(dir.getCount() - 1);
-        dir.setUpdateTime(System.currentTimeMillis());
-        videoDirRepository.save(dir);
-        log.info("canceled collect video, dir id: {}, video id: {}", dirId, videoId);
-        return true;
-    }
-
-    @Override
-    public List<VideoDir> collectedDirs(User user) {
-        return user.getVideoDirs();
-    }
-
     //TODO:分页获取看过的video，高优先级
     @Override
-    public List<VideoDetail> viewedVideos(@Nonnull User user, @Nonnull Integer offset, @Nonnull Integer limit) {
+    public List<VideoDetail> viewedVideos(@Nonnull Long userId, @Nonnull Integer offset, @Nonnull Integer limit) {
         return null;
     }
 
     @Override
-    public void download(@Nonnull User user, @Nonnull Long videoId) {
+    public void download(@Nonnull Long userId, @Nonnull Long videoId) {
+        User user = userRepository.getOne(userId);
         VideoDetail videoDetail = videoRepository.getOne(videoId);
         List<VideoDetail> downloadedVideos = user.getDownloadedVideos();
         if (downloadedVideos == null) {
@@ -379,24 +277,33 @@ public class VideoServiceImpl implements VideoService {
     }
 
     /**
-     * <p>从浏览器获取视频有效链接。目前测试阶段，直接从本机浏览器获取。
-     * <p>之后实现步骤为，首先获取当前可用的机器的列表，然后随机选其中一个进行操作
-     * <p>如果操作失败了，那台机器的账号达到次数限制，立马将其标注为不可用，发出警告，然后手动恢复并标注为可用。
+     * <p>从浏览器获取视频有效链接
+     * <p>实现步骤为，从当前可用的机器的浏览器驱动队列中取出一个进行操作
+     * <p>如果操作失败了，那台机器的账号达到次数限制，此驱动将不入队，发出警告，
+     * 然后手动恢复之后手动调用接口入队。如果操作成功，则必须立马归队。
+     * 参见{@link cn.ninanina.wushan.web.CommonController#registerDriver(String, String, Integer)}
      * <p>为了尽可能保证下载次数不达到限制，必须平衡QPS与机器数。
      * <p>这是一个相当耗时的操作，一般需要5-10秒
      */
     private void getVideoSrc(VideoDetail videoDetail) {
         //TODO：获取有效的浏览器driver
         String url = videoDetail.getUrl();
+        Pair<String, WebDriver> pair = driverManager.access();
+        WebDriver driver = pair.getRight();
         driver.get(url);
 
+        //TODO:对于没有评论按钮的页面做特殊处理。高优先级
         //点击下载按钮
-        By downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(2) > a");
+        By downloadBtn;
+        if (isElementExist(driver, new By.ByCssSelector("#tabComments_btn")))
+            downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(2) > a");
+        else downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(1) > a");
         if (isElementExist(driver, downloadBtn)) {
             driver.findElement(downloadBtn).click();
         } else {
             //没有下载按钮，表示这个视频已经从网站删除，这里也应该删除
             //返回空src表示视频已经被删除
+            driverManager.restore(pair);
             videoDetail.setSrc("");
             videoRepository.delete(videoDetail);
             videoCacheManager.removeVideo(videoDetail);
@@ -413,7 +320,9 @@ public class VideoServiceImpl implements VideoService {
             log.info("update video src, videoId: {}, newSrc: {}", videoDetail.getId(), videoDetail.getSrc());
             videoCacheManager.saveVideo(videoDetail);
         } else {
-            //TODO: 当前机器的账号下载次数达到限制，转移请求，标记机器为不可用，并且发出警告，待手动恢复正常再重新启用。中优先级
+            //TODO:发出警告，提示此机器不可用，此driver不归队
+            //转移请求
+            getVideoSrc(videoDetail);
             log.error("can't get download href!, driver addr: {}", "localhost");
         }
         videoRepository.save(videoDetail);

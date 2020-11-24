@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
 @Component("userCacheManager")
 @Slf4j
 public class UserCacheManager {
-    private Cache<String, User> userCache;
+    private Cache<String, Long> userCache;
 
     @PostConstruct
     public void init() {
@@ -30,11 +30,11 @@ public class UserCacheManager {
                 .build();
     }
 
-    public void save(String token, User user) {
-        userCache.put(token, user);
+    public void save(String token, Long userId) {
+        userCache.put(token, userId);
     }
 
-    public User get(String token) {
+    public Long get(String token) {
         return userCache.getIfPresent(token);
     }
 
