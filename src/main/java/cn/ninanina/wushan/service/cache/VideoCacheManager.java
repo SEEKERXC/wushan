@@ -50,6 +50,7 @@ public class VideoCacheManager {
                 .build(id -> {
                     VideoDetail videoDetail = videoRepository.findById(id).orElse(null);
                     if (videoDetail != null) hotKeyList.add(videoDetail.getId());
+
                     return videoDetail;
                 });
         //程序初始化时，先从数据库中取一些精选的视频，大概1500个
@@ -113,6 +114,10 @@ public class VideoCacheManager {
         hotKeyList.remove(videoDetail.getId());
         hotKeyList.add(0, videoDetail.getId());
         log.info("put a video to cache, video id: {} now size: {}", videoDetail.getId(), hotVideoCache.estimatedSize());
+    }
+
+    public VideoDetail getIfPresent(long videoId) {
+        return hotVideoCache.getIfPresent(videoId);
     }
 
     //在hotCache和validCache中都移除这个video。用于移除失效video

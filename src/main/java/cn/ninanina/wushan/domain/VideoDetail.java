@@ -40,10 +40,19 @@ public class VideoDetail {
     private Integer viewed;
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
-    private Integer approved;
+    private Integer collected;
+
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer disliked;
+
+    @Column(nullable = false, columnDefinition = "int(11)) default 0")
+    private Integer commentNum;
 
     @Column(nullable = false, columnDefinition = "bit(1) default true")
     private Boolean valid;
+
+    @Transient
+    private Boolean srcValid;
 
     @Column(nullable = false, columnDefinition = "bit(1) default false")
     private Boolean indexed;
@@ -58,10 +67,7 @@ public class VideoDetail {
     private List<TagDetail> tags;
 
     @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_user_viewed",
-            joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)})
+    @ManyToMany(mappedBy = "viewedVideos", fetch = FetchType.LAZY)
     private List<User> viewedUsers;
 
     @ManyToMany(mappedBy = "collectedVideos", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
@@ -69,9 +75,10 @@ public class VideoDetail {
     private List<Playlist> playlists;
 
     @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_user_download",
-            joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)})
+    @ManyToMany(mappedBy = "downloadedVideos", fetch = FetchType.LAZY)
     private List<User> downloadedUsers;
+
+    @JsonIgnore
+    @ManyToMany(mappedBy = "dislikedVideos", fetch = FetchType.LAZY)
+    private List<User> dislikedUsers;
 }

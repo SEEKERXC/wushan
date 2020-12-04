@@ -1,18 +1,31 @@
 package cn.ninanina.wushan.service.driver;
 
+import cn.ninanina.wushan.common.BrowserResult;
+import cn.ninanina.wushan.domain.VideoDetail;
+import cn.ninanina.wushan.repository.VideoRepository;
+import cn.ninanina.wushan.service.cache.VideoAudienceCacheManager;
+import cn.ninanina.wushan.service.cache.VideoCacheManager;
+import cn.ninanina.wushan.web.result.ResultMsg;
+import com.google.gson.Gson;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.http.HttpEntity;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Queue;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
@@ -23,52 +36,92 @@ import java.util.concurrent.TimeUnit;
 @Component("driverManager")
 @Slf4j
 public class DriverManager {
-    private BlockingDeque<Pair<String, WebDriver>> webDriverQueue;
+    @Autowired
+    private VideoCacheManager videoCacheManager;
+    @Autowired
+    private VideoAudienceCacheManager audienceCacheManager;
+    @Autowired
+    private VideoRepository videoRepository;
+
+    private BlockingDeque<String> ipQueue;
 
     @PostConstruct
     public void init() {
-        webDriverQueue = new LinkedBlockingDeque<>();
-        System.setProperty("webdriver.chrome.driver", "/opt/WebDriver/bin/chromedriver");
+        ipQueue = new LinkedBlockingDeque<>();
     }
 
     /**
-     * 增加指定机器的浏览器驱动
-     *
-     * @param ip   机器ip
-     * @param port 浏览器接口
+     * 增加指定机器的浏览器
      */
-    public boolean register(String ip, int port) {
-        ChromeOptions options = new ChromeOptions();
-        options.setExperimentalOption("debuggerAddress", ip + ":" + port);
-        ChromeDriver chromeDriver;
-        try {
-            chromeDriver = new ChromeDriver(options);
-        } catch (Exception e) {
-            log.error("register driver failed, error: {}", e.getCause().toString());
+    public boolean register(String ip) {
+        if (ipQueue.contains(ip)) {
+            log.error("ip {} has been registered, cannot register again!", ip);
             return false;
         }
-        webDriverQueue.offer(Pair.of(ip, chromeDriver));
-        log.info("new driver registered, ip: {}, port:{}", ip, port);
+        ipQueue.offer(ip);
+        log.info("new browser registered, ip: {}", ip);
         return true;
     }
 
     /**
-     * 获取可用的driver，设置5秒超时。
-     * 注意！调用之后一定要归还driver，调用restore(driver)
+     * 调用队头的浏览器，获取视频链接，完成后归队，若返回错误信息则进行相应处理
      */
-    public Pair<String, WebDriver> access() {
-        Pair<String, WebDriver> pair = null;
+    @SneakyThrows
+    public void getVideoSrc(VideoDetail videoDetail) {
+        String url = videoDetail.getUrl();
+        String ip = "";
         try {
-            pair = webDriverQueue.poll(5000, TimeUnit.MILLISECONDS);
+            ip = ipQueue.poll(5000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            //TODO:发邮件/短信提醒机器资源不够用
             e.printStackTrace();
+            //TODO:这里发出严重警告，机器资源不够用
         }
-        return pair;
+        String path = "http://" + ip + "/videosrc";
+        CloseableHttpClient httpClient = HttpClients.createDefault();
+        List<BasicNameValuePair> paramsList = new ArrayList<>();
+        paramsList.add(new BasicNameValuePair("url", String.valueOf(url)));
+        HttpPost httpPost = new HttpPost(path);
+        httpPost.setEntity(new UrlEncodedFormEntity(paramsList, "UTF-8"));
+        log.info("request on {} for video {} src.", ip, url);
+        CloseableHttpResponse httpResponse = httpClient.execute(httpPost);
+        try {
+            HttpEntity httpEntity = httpResponse.getEntity();
+            String json = EntityUtils.toString(httpEntity, "UTF-8");
+            EntityUtils.consume(httpEntity);
+            Gson gson = new Gson();
+            BrowserResult result = gson.fromJson(json, BrowserResult.class);
+            if (result.getRspCode().equals(ResultMsg.SUCCESS.getCode())) {
+                restore(ip);
+                videoDetail.setSrc(result.getData());
+                videoDetail.setUpdateTime(System.currentTimeMillis());
+                log.info("update video src, videoId: {}, newSrc: {}", videoDetail.getId(), videoDetail.getSrc());
+                videoCacheManager.saveVideo(videoDetail);
+                videoRepository.save(videoDetail);
+            } else if (result.getRspCode().equals(ResultMsg.VIDEO_INVALID.getCode())) {
+                restore(ip);
+                videoRepository.delete(videoDetail);
+                videoCacheManager.removeVideo(videoDetail);
+                audienceCacheManager.delete(videoDetail.getId());
+                log.warn("video {} has been deleted while fetching source.", videoDetail.getId());
+                videoDetail.setSrc("");
+            } else if (result.getRspCode().equals(ResultMsg.BROWSER_INVALID.getCode())) {
+                log.error("browser crashed! ip:{}", ip);
+                getVideoSrc(videoDetail);
+            }
+        } finally {
+            try {
+                if (httpResponse != null) {
+                    httpResponse.close();
+                    httpClient.close();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
-    public void restore(Pair<String, WebDriver> pair) {
-        webDriverQueue.offer(pair);
+    public void restore(String ip) {
+        ipQueue.offer(ip);
     }
 
 }

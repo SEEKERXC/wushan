@@ -73,10 +73,9 @@ public class CommonController extends BaseController implements ApplicationConte
 
     @PostMapping("/driver")
     public Response registerDriver(@RequestParam("key") String key,
-                                   @RequestParam("ip") String ip,
-                                   @RequestParam("port") Integer port) {
+                                   @RequestParam("ip") String ip) {
         if (!key.equals("jdfohewk")) return result(ResultMsg.ParamError);
-        boolean successful = driverManager.register(ip, port);
+        boolean successful = driverManager.register(ip);
         return result(successful ? "成功" : "失败，请查看error日志");
     }
 }

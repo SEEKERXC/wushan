@@ -15,7 +15,11 @@ public enum ResultMsg {
     COLLECT_CANCEL("000007", "取消收藏成功"),
 
     SECRET_INVALID("000008", "secret值无效"),
-    APPKEY_INVALID("000009", "appKey无效");
+    APPKEY_INVALID("000009", "appKey无效"),
+    VIDEO_INVALID("000012", "视频失效"),
+    BROWSER_INVALID("000013", "浏览器失效"),
+    INVALID_COMMENT_ID("000014", "无效评论id"),
+    INVALID_TAG_ID("000015", "无效标签id");
 
     ResultMsg(String code, String msg) {
         this.code = code;

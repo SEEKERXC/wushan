@@ -11,12 +11,6 @@ import java.util.Set;
 
 public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
 
-    /**
-     * 获取播放数最高的n个视频，只在程序初始化时调用。保证视频有封面
-     */
-    @Query(value = "select * from video where coverUrl is not null and valid is true order by viewed desc limit 0, ?1", nativeQuery = true)
-    List<VideoDetail> findHottest(int n);
-
     @Query(value = "select min(id) from video where titleZh is null", nativeQuery = true)
     Long findTranslateWatermark();
 
@@ -25,11 +19,6 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
      */
     @Query(value = "select min(id) from video where titleZh is not null and indexed is false", nativeQuery = true)
     Long findIndexingWatermark();
-
-    /**
-     * 根据视频url获取视频。
-     */
-    VideoDetail findByUrl(String url);
 
     /**
      * 获取相关视频的id，需要和下面的联合调用
@@ -52,13 +41,37 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
     @Query(value = "delete from video_relatedVideos where VideoDetail_id = ?1 or relatedVideos_id = ?1", nativeQuery = true)
     void deleteFromRelated(long videoId);
 
+    /**
+     * 对给定的id集合进行排序并抽取一部分，返回子id集合。不能返回video集合，因为会使offset变得很慢。
+     */
+    @Query(value = "select id from video where id in ?1 order by ?2 limit ?3, ?4", nativeQuery = true)
+    List<Long> findLimitedByIdsWithOrder(List<Long> ids, String order, int offset, int limit);
+
+    /**
+     * 对于视频数量较少的tag，直接采用sql获取
+     */
+    @Query(value = "select * from video where id in ( select video_id from video_tag where tag_id = ?1 ) order by ?2 desc limit ?3, ?4", nativeQuery = true)
+    List<VideoDetail> findLimitedWithOrder(long tagId, String sort, int offset, int limit);
+
+    //获取某标签的某一个视频的封面
+    @Query(value = "select coverUrl from video where id = (select video_id from video_tag where tag_id = ?1 limit 1)", nativeQuery = true)
+    String findCoverForTag(long tagId);
+
+    /**
+     * 查看用户是否看过某视频
+     */
+    @Query(value = "select count(1) from video_user_viewed where video_id = ?1 and user_id = ?2", nativeQuery = true)
+    int findViewed(long videoId, long userId);
+
+    /**
+     * 找出所有用户看过的视频id
+     */
+    @Query(value = "select video_id from video_user_viewed where user_id = ?1", nativeQuery = true)
+    List<Long> findViewedIds(long userId);
+
     @Modifying
     @Transactional
-    @Query(value = "insert into video_relatedVideos values( ?1 , ?2 )", nativeQuery = true)
-    void insertRelated(long id1, long id2);
-
-    @Query(value = "select count(1) from video_relatedVideos where VideoDetail_id = ?1 and relatedVideos_id = ?2", nativeQuery = true)
-    int existRelation(Long id1, Long id2);
-
+    @Query(value = "insert into video_user_viewed values ( ?1, ?2 )", nativeQuery = true)
+    void insertViewedVideo(long videoId, long userId);
 
 }

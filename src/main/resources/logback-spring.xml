@@ -28,7 +28,7 @@
         </filter>
         <file>/home/data/logs/error.log</file><!-- 文件存放路径 -->
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/home/work/data/logs/error/%d{yyyy-MM-dd}.log</fileNamePattern><!-- 每天归档 -->
+            <fileNamePattern>/home/data/logs/error/%d{yyyy-MM-dd}.log</fileNamePattern><!-- 每天归档 -->
             <maxHistory>7</maxHistory><!-- 日志存放周期（天） -->
         </rollingPolicy>
         <layout class="ch.qos.logback.classic.PatternLayout">

@@ -20,7 +20,7 @@ import javax.persistence.*;
 public class User implements Serializable {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.TABLE)
     private Long id;
 
     @Column(nullable = false)
@@ -49,13 +49,34 @@ public class User implements Serializable {
     @Column(nullable = false)
     private Long lastLoginTime;
 
-    @ManyToMany(mappedBy = "viewedUsers", fetch = FetchType.LAZY)
     @JsonIgnore
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "video_user_viewed",
+            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
     private List<VideoDetail> viewedVideos;
 
-    @ManyToMany(mappedBy = "downloadedUsers", fetch = FetchType.LAZY)
     @JsonIgnore
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "video_user_download",
+            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
     private List<VideoDetail> downloadedVideos;
+
+    @JsonIgnore
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "video_user_dislike",
+            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
+            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
+    private List<VideoDetail> dislikedVideos;
+
+    @ManyToMany(mappedBy = "approvedUsers", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Comment> approvedComments;
+
+    @ManyToMany(mappedBy = "disapprovedUsers", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Comment> disapprovedComments;
 
     @OneToMany(mappedBy = "user", targetEntity = Playlist.class, fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @OrderBy("updateTime desc")

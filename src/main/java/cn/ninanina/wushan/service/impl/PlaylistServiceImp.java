@@ -5,6 +5,7 @@ import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.VideoDetail;
 import cn.ninanina.wushan.repository.UserRepository;
 import cn.ninanina.wushan.repository.PlaylistRepository;
+import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.PlaylistService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,8 @@ public class PlaylistServiceImp implements PlaylistService {
     private PlaylistRepository playlistRepository;
     @Autowired
     private UserRepository userRepository;
+    @Autowired
+    private VideoRepository videoRepository;
 
     @Override
     public Playlist create(@Nonnull Long userId, @Nonnull String name) {
@@ -76,37 +79,33 @@ public class PlaylistServiceImp implements PlaylistService {
 
     @Override
     public Boolean collect(@Nonnull Playlist playlist, @Nonnull VideoDetail videoDetail) {
-        List<VideoDetail> collectedVideos = playlist.getCollectedVideos();
-        if (CollectionUtils.isEmpty(collectedVideos)) {
-            collectedVideos = new ArrayList<>();
-            playlist.setCollectedVideos(collectedVideos);
-        }
         //已收藏过
-        if (collectedVideos.contains(videoDetail)) {
+        if (playlistRepository.findCollected(videoDetail.getId(), playlist.getId()) > 0) {
             return false;
         }
-        collectedVideos.add(videoDetail);
+        playlistRepository.insertCollect(videoDetail.getId(), playlist.getId());
+        log.info("collected video, dir id: {}, video id: {}", playlist.getId(), videoDetail.getId());
         playlist.setUpdateTime(System.currentTimeMillis());
         playlist.setCount(playlist.getCount() + 1);
         playlist.setCover(videoDetail.getCoverUrl());
-        log.info("collected video, dir id: {}, video id: {}", playlist.getId(), videoDetail.getId());
         playlistRepository.save(playlist);
+        videoDetail.setCollected(videoDetail.getCollected() + 1);
+        videoRepository.save(videoDetail);
         return true;
     }
 
     @Override
     public Boolean cancelCollect(@Nonnull Playlist playlist, @Nonnull VideoDetail videoDetail) {
-        List<VideoDetail> collectedVideos = playlist.getCollectedVideos();
-        if (CollectionUtils.isEmpty(collectedVideos) || !collectedVideos.contains(videoDetail)) {
+        if (playlistRepository.findCollected(videoDetail.getId(), playlist.getId()) <= 0) {
             return false;
         }
-        collectedVideos.remove(videoDetail);
+        playlistRepository.deleteCollect(videoDetail.getId(), playlist.getId());
+        log.info("canceled collect video, dir id: {}, video id: {}", playlist.getId(), videoDetail.getId());
         playlist.setCount(playlist.getCount() - 1);
         playlist.setUpdateTime(System.currentTimeMillis());
-        if (collectedVideos.size() > 0)
-            playlist.setCover(collectedVideos.get(collectedVideos.size() - 1).getCoverUrl());
         playlistRepository.save(playlist);
-        log.info("canceled collect video, dir id: {}, video id: {}", playlist.getId(), videoDetail.getId());
+        videoDetail.setCollected(videoDetail.getCollected() - 1);
+        videoRepository.save(videoDetail);
         return true;
     }
 

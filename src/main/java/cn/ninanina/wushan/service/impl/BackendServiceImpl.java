@@ -1,6 +1,7 @@
 package cn.ninanina.wushan.service.impl;
 
 import cn.ninanina.wushan.common.GoogleResult;
+import cn.ninanina.wushan.common.util.CommonUtil;
 import cn.ninanina.wushan.common.util.LuceneUtil;
 import cn.ninanina.wushan.domain.TagDetail;
 import cn.ninanina.wushan.domain.VideoDetail;
@@ -10,6 +11,11 @@ import cn.ninanina.wushan.service.BackendService;
 import com.google.gson.Gson;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -18,7 +24,6 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
-import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.LongField;
@@ -26,27 +31,18 @@ import org.apache.lucene.document.TextField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.Version;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import javax.annotation.PostConstruct;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.annotation.PostConstruct;
 
 /**
  * 执行一些后台任务，包括翻译、建索引、实时抓取视频链接等
@@ -59,16 +55,17 @@ public class BackendServiceImpl implements BackendService {
     @Autowired
     private TagRepository tagRepository;
 
-    //一个建索引线程，每个处理之间间隔500毫秒
+    //视频建索引线程池
     private final ScheduledExecutorService indexingExecutorService = Executors.newScheduledThreadPool(1);
 
     private static final String URL = "http://translate.google.cn/translate_a/single";
 
-    //先不开启翻译，没钱了！！
     @PostConstruct
     public void init() {
         startTranslate();
         startIndexing();
+        getPinyinForTags();
+        indexingTags();
     }
 
     @Override
@@ -107,6 +104,7 @@ public class BackendServiceImpl implements BackendService {
             Long watermark = videoRepository.findTranslateWatermark();
             while (watermark != null) {
                 videoRepository.findById(watermark).ifPresent(videoDetail -> {
+                    if (!StringUtils.isEmpty(videoDetail.getTitleZh())) return;
                     Map<String, String> params = new HashMap<>();
                     params.put("client", "gtx");
                     params.put("dt", "t");
@@ -182,6 +180,69 @@ public class BackendServiceImpl implements BackendService {
         }, 5000, 500, TimeUnit.MILLISECONDS);
     }
 
+    //对翻译了的tag解析拼音首字母并保存，都采用小写
+    private void getPinyinForTags() {
+        new Thread(() -> {
+            long pinyinWatermark = tagRepository.findPinyinWaterMark();
+            long translateWatermark = tagRepository.findTranslateWaterMark();
+            log.info("start pinyin program.");
+            for (long i = pinyinWatermark; i < translateWatermark; i++) {
+                tagRepository.findById(i).ifPresent(tagDetail -> {
+                    char start;
+                    if (StringUtils.isEmpty(tagDetail.getTagZh())) return;
+                    char word = tagDetail.getTagZh().charAt(0);
+                    // 先判断其是否是汉字
+                    if (String.valueOf(word).matches("[\\u4E00-\\u9FA5]+")) {
+                        //提取汉字的首字母
+                        String[] pinyinArray = PinyinHelper.toHanyuPinyinStringArray(word);
+                        if (pinyinArray != null) {
+                            start = pinyinArray[0].charAt(0);
+                        } else {
+                            start = word;
+                        }
+                    } else start = word;
+                    tagDetail.setStart(start);
+                    tagRepository.save(tagDetail);
+                    log.info("save tagZh {} start pinyin {}", tagDetail.getTagZh(), start);
+                });
+            }
+            log.info("pinyin program ended.");
+        }).start();
+    }
+
+    /**
+     * 给翻译过的标签建索引，方便搜素。索引内容应包含id、英文内容、中文内容、中文拼音。
+     */
+    @SneakyThrows
+    private void indexingTags() {
+        log.info("start indexing tags");
+        IndexWriter indexWriter = LuceneUtil.get().getTagIndexWriter();
+        new Thread(() -> {
+            long translateWatermark = tagRepository.findTranslateWaterMark();
+            long indexingWatermark = tagRepository.findIndexingWatermark();
+            for (long i = indexingWatermark; i < translateWatermark; i++) {
+                tagRepository.findById(i).ifPresent(tagDetail -> {
+                    String pinyin = CommonUtil.getPinyin(tagDetail.getTagZh());
+                    Document document = new Document();
+                    document.add(new LongField("id", tagDetail.getId(), Field.Store.YES));
+                    document.add(new TextField("tag", tagDetail.getTag(), Field.Store.YES));
+                    document.add(new TextField("tagZh", tagDetail.getTagZh(), Field.Store.YES));
+                    document.add(new TextField("pinyin", pinyin, Field.Store.YES));
+                    try {
+                        indexWriter.addDocument(document);
+                        indexWriter.commit();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    tagDetail.setIndexed(true);
+                    tagRepository.save(tagDetail);
+                    log.info("tag {} is indexed, tagZh {}, pinyin {}", tagDetail.getId(), tagDetail.getTagZh(), pinyin);
+                });
+            }
+            log.info("indexing tags finished.");
+        }).start();
+    }
+
     @Override
     public void stopIndexing() {
         indexingExecutorService.shutdownNow();
@@ -220,4 +281,5 @@ public class BackendServiceImpl implements BackendService {
             }
         }
     }
+
 }

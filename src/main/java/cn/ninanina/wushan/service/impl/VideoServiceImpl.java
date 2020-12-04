@@ -1,16 +1,12 @@
 package cn.ninanina.wushan.service.impl;
 
+import cn.ninanina.wushan.common.util.CommonUtil;
 import cn.ninanina.wushan.common.util.LuceneUtil;
-import cn.ninanina.wushan.domain.Comment;
-import cn.ninanina.wushan.domain.User;
-import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.domain.Playlist;
-import cn.ninanina.wushan.repository.CommentRepository;
-import cn.ninanina.wushan.repository.UserRepository;
-import cn.ninanina.wushan.repository.PlaylistRepository;
-import cn.ninanina.wushan.repository.VideoRepository;
+import cn.ninanina.wushan.domain.*;
+import cn.ninanina.wushan.repository.*;
 import cn.ninanina.wushan.service.VideoService;
 import cn.ninanina.wushan.service.cache.RecommendCacheManager;
+import cn.ninanina.wushan.service.cache.TagCacheManager;
 import cn.ninanina.wushan.service.cache.VideoAudienceCacheManager;
 import cn.ninanina.wushan.service.cache.VideoCacheManager;
 import cn.ninanina.wushan.service.driver.DriverManager;
@@ -21,21 +17,25 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.Version;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Example;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.annotation.PostConstruct;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 
 /**
  * <p>这是整个应用的核心类。
@@ -60,10 +60,16 @@ public class VideoServiceImpl implements VideoService {
     private VideoAudienceCacheManager audienceCacheManager;
 
     @Autowired
+    private TagCacheManager tagCacheManager;
+
+    @Autowired
     private DriverManager driverManager;
 
     @Autowired
     private VideoRepository videoRepository;
+
+    @Autowired
+    private TagRepository tagRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -75,53 +81,118 @@ public class VideoServiceImpl implements VideoService {
     private PlaylistRepository playlistRepository;
 
     @Override
-    public List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit) {
+    public List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer offset, @Nonnull Integer limit) {
+        List<TagDetail> tags = null;
         switch (type) {
-            case "hot":
+            case "hot": //最新更新链接的视频
                 return hotVideos(appKey, limit);
-            case "rihan":
-                System.out.println("rihan");
-                break;
-            case "china":
-                System.out.println("china");
+            case "recommend": //根据用户的观看、收藏、下载与不喜欢等行为进行推荐
+                List<VideoDetail> recommendResult = new ArrayList<>();
+                if (userId == null) return hotVideos(appKey, limit);
+                List<Long> viewedVideoIds = videoRepository.findViewedIds(userId);
+                List<Long> playlistIds = playlistRepository.findAllPlaylistIds(userId);
+                List<Long> collectedVideoIds = new ArrayList<>();
+                for (long playlistId : playlistIds) {
+                    collectedVideoIds.addAll(playlistRepository.findAllVideoIds(playlistId));
+                }
+                if (CollectionUtils.isEmpty(viewedVideoIds)
+                        && CollectionUtils.isEmpty(collectedVideoIds)) {
+                    return hotVideos(appKey, limit);
+                }
+                Collections.shuffle(viewedVideoIds);
+                Collections.shuffle(collectedVideoIds);
+                List<Long> ids = new ArrayList<>();
+                ids.addAll(collectedVideoIds);
+                ids.addAll(viewedVideoIds);
+                for (long id : ids) {
+                    List<Long> relatedIds = getRelatedVideoIds(id);
+                    for (long relatedId : relatedIds) {
+                        if (!recommendCacheManager.exist(appKey, relatedId) //TODO:添加下载过的和不喜欢的
+                                && !collectedVideoIds.contains(relatedId)) { //暂定观看过的视频仍然可以推荐
+                            VideoDetail video = videoCacheManager.getIfPresent(relatedId);
+                            if (video == null)  //TODO:配置redis缓存，一级缓存如果没有，先从redis缓存中获取，没有再访问数据库。
+                                videoRepository.findById(relatedId).ifPresent(recommendResult::add);
+                            else recommendResult.add(video);
+                            recommendCacheManager.save(appKey, relatedId);
+                        }
+                        if (recommendResult.size() >= limit) break;
+                    }
+                    if (recommendResult.size() >= limit) break;
+                }
+                return recommendResult;
+            case "asian":
+                //标签id
+                long asian = 1551;
+                long japanese = 1400;
+                long jav = 1738;
+                long chinese = 1555;
+                long china = 4204;
+                tags = new ArrayList<>() {{
+                    add(tagCacheManager.getTag(asian));
+                    add(tagCacheManager.getTag(japanese));
+                    add(tagCacheManager.getTag(jav));
+                    add(tagCacheManager.getTag(chinese));
+                    add(tagCacheManager.getTag(china));
+                }};
                 break;
             case "west":
-                System.out.println("west");
+                long european = 1553;
+                long euro = 1601;
+                long blonde = 1488;
+                long pornstar = 1743;
+                tags = new ArrayList<>() {{
+                    add(tagCacheManager.getTag(european));
+                    add(tagCacheManager.getTag(euro));
+                    add(tagCacheManager.getTag(blonde));
+                    add(tagCacheManager.getTag(pornstar));
+                }};
                 break;
             case "lesbian":
-                System.out.println("lesbian");
+                long lesbian = 1495;
+                long lesbians = 1497;
+                long lesbo = 2068;
+                long lesbian_sex = 1912;
+                long lesbian_porn = 3106;
+                long lesbiansex = 4076;
+                tags = new ArrayList<>() {{
+                    add(tagCacheManager.getTag(lesbian));
+                    add(tagCacheManager.getTag(lesbians));
+                    add(tagCacheManager.getTag(lesbo));
+                    add(tagCacheManager.getTag(lesbian_sex));
+                    add(tagCacheManager.getTag(lesbian_porn));
+                    add(tagCacheManager.getTag(lesbiansex));
+                }};
                 break;
         }
-        User user = null;
-        if (userId != null) user = userRepository.getOne(userId);
-        if (user == null) return hotVideos(appKey, limit);
-        List<VideoDetail> viewedVideos = user.getViewedVideos();
-        List<Playlist> playlists = user.getPlaylists();
-        List<VideoDetail> collectedVideos = new ArrayList<>();
-        for (Playlist dir : playlists) {
-            collectedVideos.addAll(dir.getCollectedVideos());
-        }
-        List<VideoDetail> downloadedVideos = user.getDownloadedVideos();
-        if (CollectionUtils.isEmpty(viewedVideos)
-                && CollectionUtils.isEmpty(collectedVideos)
-                && CollectionUtils.isEmpty(downloadedVideos)) {
-            return hotVideos(appKey, limit);
-        }
-        //TODO:根据收藏、下载、观看过的视频进行推荐
-        return hotVideos(appKey, limit);
+        assert tags != null;
+        Collections.shuffle(tags);
+        List<VideoDetail> result = new ArrayList<>();
+        Random random = new Random();
+        do {
+            for (TagDetail tag : tags) {
+                List<Long> videoIdsOfTag = tagCacheManager.getVideoIdsOfTag(tag);
+                int luckyGuy = random.nextInt(videoIdsOfTag.size());
+                while (recommendCacheManager.exist(appKey, videoIdsOfTag.get(luckyGuy))) {
+                    luckyGuy = random.nextInt(videoIdsOfTag.size());
+                }
+                videoRepository.findById(videoIdsOfTag.get(luckyGuy)).ifPresent(result::add);
+                recommendCacheManager.save(appKey, videoIdsOfTag.get(luckyGuy));
+                if (result.size() >= limit) break;
+            }
+        } while (result.size() < limit);
+        return result;
     }
 
     private List<VideoDetail> hotVideos(@Nonnull String appKey, @Nonnull Integer limit) {
         List<Long> videoIdList = videoCacheManager.getHotKeys();
         List<VideoDetail> result = new ArrayList<>(limit);
-        //videoIdList是一个linkedList，长度小于3w，遍历一次id列表，取其中10个即可。
         for (Long id : videoIdList) {
+            if (--limit < 0) break;
             if (!recommendCacheManager.exist(appKey, id)) {
                 VideoDetail videoDetail = videoCacheManager.getVideo(id);
                 result.add(videoDetail);
                 recommendCacheManager.save(appKey, id);
             }
-            if (result.size() >= limit) break;
         }
         log.info("user with appKey {} get hot videos, now total: {}",
                 appKey, recommendCacheManager.total(appKey));
@@ -132,71 +203,40 @@ public class VideoServiceImpl implements VideoService {
     public VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId) {
         VideoDetail detail = videoCacheManager.getVideo(videoId);
         if (StringUtils.isEmpty(detail.getSrc()) || !detail.getSrc().contains("xvideos")) {
-            getVideoSrc(detail);
+            driverManager.getVideoSrc(detail);
             if (StringUtils.isEmpty(detail.getSrc())) {//这里表示视频已经被网站删除，下面同理
                 return detail;
             }
         }
-        String src = detail.getSrc(); //这里要保证视频链接真实，虽然视频不一定有效
-        long currentSeconds = System.currentTimeMillis() / 1000;
-        long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h="))) - 1800;
-        if (currentSeconds >= urlSeconds) {
-            getVideoSrc(detail);
+        if (CommonUtil.videoSrcValid(detail.getSrc())) {
+            driverManager.getVideoSrc(detail);
             if (StringUtils.isEmpty(detail.getSrc())) return detail;
         }
         if (userId != null) {
-            User user = userRepository.getOne(userId);
-            List<VideoDetail> viewedVideos = user.getViewedVideos();
-            if (CollectionUtils.isEmpty(viewedVideos)) {
-                viewedVideos = new ArrayList<>();
-                user.setViewedVideos(viewedVideos);
-            }
-            viewedVideos.add(detail);
-            userRepository.save(user);
+            if (videoRepository.findViewed(videoId, userId) <= 0)
+                videoRepository.insertViewedVideo(videoId, userId);
         }
         audienceCacheManager.increase(videoId);
         return detail;
     }
 
-    //TODO:获取相关视频，高优先级
+    //只获取一级相关
     @Override
     public List<VideoDetail> relatedVideos(@Nonnull Long videoId, @Nonnull Integer offset, @Nonnull Integer limit) {
-        List<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
-        List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(videoId);
-        for (Long id : reverseIds) {
-            if (!relatedIds.contains(id)) relatedIds.add(id);
-        }
-        relatedIds.remove(videoId);
+        List<Long> relatedIds = getRelatedVideoIds(videoId);
         List<VideoDetail> result = new ArrayList<>(limit);
         for (long id : relatedIds) {
             if (--offset >= 0) continue;
             videoRepository.findById(id).ifPresentOrElse(result::add, () -> videoRepository.deleteFromRelated(id));
             if (result.size() >= limit) break;
         }
-        if (result.size() < limit) {
-            for (Long id : relatedIds) {
-                boolean completed = false;
-                List<Long> secondRelatedIds = videoRepository.findRelatedVideoIds(id);
-                List<Long> secondReverseIds = videoRepository.findRelatedVideoIds_reverse(id);
-                for (Long relatedId : secondRelatedIds) {
-                    if (!relatedIds.contains(relatedId)) relatedIds.add(relatedId);
-                }
-                for (Long reverseId : secondReverseIds) {
-                    if (!relatedIds.contains(reverseId))
-                        relatedIds.add(reverseId);
-                }
-                for (Long relatedId : relatedIds) {
-                    if (--offset >= 0) continue;
-                    videoRepository.findById(relatedId).ifPresentOrElse(result::add, () -> videoRepository.deleteFromRelated(relatedId));
-                    if (result.size() >= limit) {
-                        completed = true;
-                        break;
-                    }
-                }
-                if (completed) break;
-            }
-        }
         return result;
+    }
+
+    //TODO:搜索建议
+    @Override
+    public List<String> suggestSearch(@Nonnull String query) {
+        return null;
     }
 
     //TODO:设置同义词
@@ -229,11 +269,87 @@ public class VideoServiceImpl implements VideoService {
         if (videoDetail == null) return null;
         comment.setVideo(videoDetail);
         comment.setUser(user);
-        comment.setApproved(0);
+        comment.setApprove(0);
+        comment.setDisapprove(0);
         if (parentId != null) comment.setParentId(parentId);
         comment.setTime(System.currentTimeMillis());
         comment = commentRepository.save(comment);
+        comment.setApproved(false);
+        comment.setDisapproved(false);
+        videoDetail.setCommentNum(videoDetail.getCommentNum() + 1);
+        videoCacheManager.saveVideo(videoDetail);
+        videoRepository.save(videoDetail);
         return comment;
+    }
+
+    @Override
+    public Comment approveComment(@Nonnull Long userId, @Nonnull Comment comment) {
+        boolean disapproved = commentRepository.findDisapproved(comment.getId(), userId) > 0;
+        boolean approved = commentRepository.findApproved(comment.getId(), userId) > 0;
+        if (approved) { //取消赞
+            commentRepository.deleteApprove(comment.getId(), userId);
+            comment.setApprove(comment.getApprove() - 1);
+            comment = commentRepository.save(comment);
+            comment.setApproved(false);
+        } else { //赞
+            if (disapproved) {
+                comment.setDisapprove(comment.getDisapprove() - 1);
+                commentRepository.deleteDisapprove(comment.getId(), userId);
+            }
+            commentRepository.insertApprove(comment.getId(), userId);
+            comment.setApprove(comment.getApprove() + 1);
+            comment = commentRepository.save(comment);
+            comment.setApproved(true);
+        }
+        comment.setDisapproved(false);
+        return comment;
+    }
+
+    @Override
+    public Comment disapproveComment(@Nonnull Long userId, @Nonnull Comment comment) {
+        boolean disapproved = commentRepository.findDisapproved(comment.getId(), userId) > 0;
+        boolean approved = commentRepository.findApproved(comment.getId(), userId) > 0;
+        if (disapproved) { //取消踩
+            commentRepository.deleteDisapprove(comment.getId(), userId);
+            comment.setDisapprove(comment.getDisapprove() - 1);
+            comment = commentRepository.save(comment);
+            comment.setDisapproved(false);
+        } else { //踩
+            if (approved) {
+                comment.setApprove(comment.getApprove() - 1);
+                commentRepository.deleteApprove(comment.getId(), userId);
+            }
+            commentRepository.insertDisapprove(comment.getId(), userId);
+            comment.setDisapprove(comment.getDisapprove() + 1);
+            comment = commentRepository.save(comment);
+            comment.setDisapproved(true);
+        }
+        comment.setApproved(false);
+        return comment;
+    }
+
+    @Override
+    public List<Comment> getComments(@Nonnull Long userId, @Nonnull Long videoId, @Nonnull Integer page, @Nonnull Integer size, @Nonnull String sort) {
+        VideoDetail videoDetail = videoRepository.getOne(videoId);
+        Comment comment = new Comment();
+        comment.setVideo(videoDetail);
+        Page<Comment> comments;
+        if (sort.equals("hot"))
+            comments = commentRepository.findAll(Example.of(comment), PageRequest.of(page, size, Sort.by(new Sort.Order(Sort.Direction.DESC, "approve"))));
+        else
+            comments = commentRepository.findAll(Example.of(comment), PageRequest.of(page, size, Sort.by(new Sort.Order(Sort.Direction.DESC, "time"))));
+        List<Comment> commentList = comments.getContent();
+        for (Comment c : commentList) {
+            c.setApproved(commentRepository.findApproved(c.getId(), userId) > 0);
+            c.setDisapproved(commentRepository.findDisapproved(c.getId(), userId) > 0);
+        }
+        return commentList;
+    }
+
+    @Override
+    public List<Comment> getChildComments(@Nonnull Integer page, @Nonnull Integer size, @Nonnull Long commentId) {
+        Page<Comment> comments = commentRepository.findAll(PageRequest.of(page, size, Sort.by(new Sort.Order(Sort.Direction.ASC, "time"))));
+        return comments.getContent();
     }
 
     //TODO:分页获取看过的video，高优先级
@@ -266,7 +382,7 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public List<Pair<VideoDetail, Integer>> onlineRank(@Nonnull Integer limit) {
+    public List<Pair<VideoDetail, Integer>> onlineRank(@Nonnull Integer offset, @Nonnull Integer limit) {
         List<Pair<VideoDetail, Integer>> result = new ArrayList<>();
         List<Pair<Long, Integer>> rank = audienceCacheManager.rank(limit);
         for (Pair<Long, Integer> original : rank) {
@@ -277,67 +393,16 @@ public class VideoServiceImpl implements VideoService {
     }
 
     /**
-     * <p>从浏览器获取视频有效链接
-     * <p>实现步骤为，从当前可用的机器的浏览器驱动队列中取出一个进行操作
-     * <p>如果操作失败了，那台机器的账号达到次数限制，此驱动将不入队，发出警告，
-     * 然后手动恢复之后手动调用接口入队。如果操作成功，则必须立马归队。
-     * 参见{@link cn.ninanina.wushan.web.CommonController#registerDriver(String, String, Integer)}
-     * <p>为了尽可能保证下载次数不达到限制，必须平衡QPS与机器数。
-     * <p>这是一个相当耗时的操作，一般需要5-10秒
+     * 获取视频的一级相关视频id
      */
-    private void getVideoSrc(VideoDetail videoDetail) {
-        //TODO：获取有效的浏览器driver
-        String url = videoDetail.getUrl();
-        Pair<String, WebDriver> pair = driverManager.access();
-        WebDriver driver = pair.getRight();
-        driver.get(url);
-
-        //TODO:对于没有评论按钮的页面做特殊处理。高优先级
-        //点击下载按钮
-        By downloadBtn;
-        if (isElementExist(driver, new By.ByCssSelector("#tabComments_btn")))
-            downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(2) > a");
-        else downloadBtn = new By.ByCssSelector("#video-actions > ul > li:nth-child(1) > a");
-        if (isElementExist(driver, downloadBtn)) {
-            driver.findElement(downloadBtn).click();
-        } else {
-            //没有下载按钮，表示这个视频已经从网站删除，这里也应该删除
-            //返回空src表示视频已经被删除
-            driverManager.restore(pair);
-            videoDetail.setSrc("");
-            videoRepository.delete(videoDetail);
-            videoCacheManager.removeVideo(videoDetail);
-            audienceCacheManager.delete(videoDetail.getId());
-            log.warn("video {} has been deleted while fetching source.", videoDetail.getId());
-            return;
+    private List<Long> getRelatedVideoIds(long videoId) {
+        List<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
+        List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(videoId);
+        for (Long id : reverseIds) {
+            if (!relatedIds.contains(id)) relatedIds.add(id);
         }
-        //等待下载链接
-        By href = new By.ByCssSelector("#tabDownload > p > a:nth-child(1)");
-        if (isElementExist(driver, href)) {
-            String src = driver.findElement(href).getAttribute("href");
-            videoDetail.setSrc(src);
-            videoDetail.setUpdateTime(System.currentTimeMillis());
-            log.info("update video src, videoId: {}, newSrc: {}", videoDetail.getId(), videoDetail.getSrc());
-            videoCacheManager.saveVideo(videoDetail);
-        } else {
-            //TODO:发出警告，提示此机器不可用，此driver不归队
-            //转移请求
-            getVideoSrc(videoDetail);
-            log.error("can't get download href!, driver addr: {}", "localhost");
-        }
-        videoRepository.save(videoDetail);
-    }
-
-    private boolean isElementExist(WebDriver driver, By locator) {
-        driver.manage().timeouts().implicitlyWait(3, TimeUnit.SECONDS);
-        try {
-            driver.findElement(locator);
-            return true;
-        } catch (Exception e) {
-            return false;
-        } finally {
-            driver.manage().timeouts().implicitlyWait(5, TimeUnit.SECONDS);
-        }
+        relatedIds.remove(videoId);
+        return relatedIds;
     }
 
 }

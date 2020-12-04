@@ -24,8 +24,20 @@ public class TagDetail {
     @Column
     private String tagZh;
 
+    @Column
+    private Character start;
+
+    @Column(nullable = false, columnDefinition = "bit(1) default false")
+    private Boolean indexed;
+
     @Column(nullable = false)
     private Integer videoCount;
+
+    @Column
+    private String cover;
+
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer searchCount;
 
     @ManyToMany(mappedBy = "tags", fetch = FetchType.LAZY)
     @JsonIgnore
