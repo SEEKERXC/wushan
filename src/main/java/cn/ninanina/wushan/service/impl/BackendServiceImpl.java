@@ -19,6 +19,7 @@ import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -243,6 +244,13 @@ public class BackendServiceImpl implements BackendService {
         }).start();
     }
 
+    /**
+     * 保存视频的秒数
+     */
+    private void saveDurationSeconds(){
+
+    }
+
     @Override
     public void stopIndexing() {
         indexingExecutorService.shutdownNow();
@@ -263,7 +271,6 @@ public class BackendServiceImpl implements BackendService {
         log.info("translating {}", params.get("q"));
         CloseableHttpResponse httpResponse = httpClient.execute(httpPost);
         try {
-            /* 响应不是音频流，直接显示结果 */
             HttpEntity httpEntity = httpResponse.getEntity();
             String json = EntityUtils.toString(httpEntity, "UTF-8");
             EntityUtils.consume(httpEntity);

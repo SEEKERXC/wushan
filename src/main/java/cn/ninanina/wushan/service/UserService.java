@@ -18,4 +18,6 @@ public interface UserService {
      */
     User login(String username, String password);
 
+    User update(long userId, String password, String nickname, Gender gender, int age, boolean straight);
+
 }

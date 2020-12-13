@@ -1,12 +1,10 @@
 package cn.ninanina.wushan.service;
 
 import cn.ninanina.wushan.domain.Comment;
-import cn.ninanina.wushan.domain.TagDetail;
+import cn.ninanina.wushan.domain.ToWatch;
 import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.service.cache.VideoCacheManager;
-import org.apache.commons.lang3.tuple.Pair;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.jpa.repository.Query;
+import cn.ninanina.wushan.domain.VideoUserViewed;
+import org.springframework.data.util.Pair;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -25,14 +23,14 @@ public interface VideoService {
      * <p>然后根据用户收藏、下载、浏览过的视频推荐，
      * <p>如果没有任何记录或者记录很少，则从选定的精华视频中推荐。
      */
-    List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer offset, @Nonnull Integer limit);
+    List<VideoDetail> recommendVideos(Long userId, @Nonnull String appKey, @Nonnull String type, @Nonnull Integer limit);
 
     /**
      * 获取指定视频的有效信息，即更新视频链接，当客户端请求视频详情，并且视频链接失效时才调用。
      * <p>视频实际有效为3小时，我们规定超过2.5小时则失效。
      * <p>如果数据库/缓存中的视频链接还有效，则不打开页面重新请求，否则就调用selenium的接口进行更新。
      */
-    VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId);
+    VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId, Boolean withoutSrc, Boolean record);
 
     /**
      * 首先获取一级相关视频，一般有20-50个，获取完了之后获取二级相关，一般有1000个左右。
@@ -55,7 +53,7 @@ public interface VideoService {
      * @param query 关键词，可以中文可以英文
      * @return 匹配的视频列表
      */
-    List<VideoDetail> search(@Nonnull String query, @Nonnull Integer offset, @Nonnull Integer limit);
+    List<VideoDetail> search(@Nonnull String query, @Nonnull Integer offset, @Nonnull Integer limit, @Nonnull String sort);
 
     /**
      * 发表视频评论
@@ -98,13 +96,24 @@ public interface VideoService {
 
     /**
      * 获取用户看过的视频列表，分段获取
+     * 如果指定了startOfDay就获取当天的所有记录，否则按照offset和limit获取
      */
-    List<VideoDetail> viewedVideos(@Nonnull Long userId, @Nonnull Integer offset, @Nonnull Integer limit);
+    List<Pair<VideoUserViewed, VideoDetail>> viewedVideos(@Nonnull Long userId, Integer offset, Integer limit, Long startOfDay);
+
+    /**
+     * 返回用户所有观看记录，不需要排序
+     */
+    List<VideoUserViewed> allViewed(@Nonnull Long userId);
+
+    /**
+     * 删除观看记录
+     */
+    void deleteViewed(@Nonnull List<Long> viewedIds);
 
     /**
      * 下载视频，做个记录方便推荐。因为下载的视频一定是用户最喜欢的，权重比收藏还要高。
      */
-    void download(@Nonnull Long userId, @Nonnull Long videoId);
+    void download(@Nonnull Long userId, @Nonnull VideoDetail video);
 
     /**
      * 用户退出视频播放
@@ -120,11 +129,41 @@ public interface VideoService {
     int audiences(@Nonnull Long videoId);
 
     /**
-     * 获取当前在线视频排行，根据观众数降序排列
-     *
-     * @param limit 限制数量
-     * @return Pair列表，左为video详情，右为当前观看人数。
+     * 获取当前链接有效的视频，并且提供当前观看人数
      */
-    List<Pair<VideoDetail, Integer>> onlineRank(@Nonnull Integer offset, @Nonnull Integer limit);
+    List<VideoDetail> instantVideos(@Nonnull String appKey, Long userId, @Nonnull Integer limit);
+
+    /**
+     * 喜欢/取消喜欢video
+     *
+     * @return true表示喜欢，false表示取消喜欢
+     */
+    boolean likeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
+
+    List<Long> likedVideos(@Nonnull Long userId);
+
+    /**
+     * 不喜欢/取消不喜欢video
+     *
+     * @return true表示不喜欢，false表示取消不喜欢
+     */
+    boolean dislikeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
+
+    List<Long> dislikedVideos(@Nonnull Long userId);
+
+    /**
+     * 新增稍后观看
+     */
+    ToWatch newToWatch(long userId, long videoId);
+
+    /**
+     * 批量删除稍后观看
+     */
+    void deleteToWatch(List<Long> toWatchIds);
+
+    /**
+     * 获取稍后观看列表，根据添加时间降序排列
+     */
+    List<Pair<ToWatch, VideoDetail>> listToWatches(long userId, int offset, int limit);
 
 }

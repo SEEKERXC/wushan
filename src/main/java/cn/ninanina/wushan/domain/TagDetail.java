@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import javax.persistence.*;
+import java.io.Serializable;
 import java.util.List;
 
 @Entity
@@ -13,7 +14,7 @@ import java.util.List;
 @Data
 @EqualsAndHashCode(of = "id")
 @JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
-public class TagDetail {
+public class TagDetail implements Serializable {
     @Id
     @GeneratedValue
     private Long id;
@@ -38,12 +39,4 @@ public class TagDetail {
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer searchCount;
-
-    @ManyToMany(mappedBy = "tags", fetch = FetchType.LAZY)
-    @JsonIgnore
-    private List<VideoDetail> videos;
-
-    @ManyToMany(mappedBy = "collectedTags", fetch = FetchType.LAZY)
-    @JsonIgnore
-    private List<Playlist> playlists;
 }

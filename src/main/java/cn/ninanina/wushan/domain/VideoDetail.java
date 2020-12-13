@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import javax.persistence.*;
+import java.io.Serializable;
 import java.util.List;
 
 @Data
@@ -13,7 +14,7 @@ import java.util.List;
 @Table(name = "video")
 @EqualsAndHashCode(of = "id")
 @JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
-public class VideoDetail {
+public class VideoDetail implements Serializable { //todo:添加视频评分,根据点赞数、踩数、收藏数、下载数以及推送数计算
     @Id
     @GeneratedValue
     private Long id;
@@ -36,23 +37,32 @@ public class VideoDetail {
     @Column(nullable = false)
     private String duration;
 
+    @Column
+    private Integer durationSeconds;
+
     @Column(nullable = false)
-    private Integer viewed;
+    private Integer viewed; //这是xvideo网站上面的播放数
+
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer audience; //这是我们这里的播放数
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer collected;
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer downloaded;
+
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer liked;
+
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer disliked;
 
-    @Column(nullable = false, columnDefinition = "int(11)) default 0")
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer commentNum;
 
     @Column(nullable = false, columnDefinition = "bit(1) default true")
     private Boolean valid;
-
-    @Transient
-    private Boolean srcValid;
 
     @Column(nullable = false, columnDefinition = "bit(1) default false")
     private Boolean indexed;
@@ -60,25 +70,10 @@ public class VideoDetail {
     @Column(nullable = false, columnDefinition = "bigint(20) default 0")
     private Long updateTime;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "video_tag",
-            joinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "tag_id", referencedColumnName = "id", nullable = false)})
+    @Transient
     private List<TagDetail> tags;
-
-    @JsonIgnore
-    @ManyToMany(mappedBy = "viewedVideos", fetch = FetchType.LAZY)
-    private List<User> viewedUsers;
 
     @ManyToMany(mappedBy = "collectedVideos", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @JsonIgnore
     private List<Playlist> playlists;
-
-    @JsonIgnore
-    @ManyToMany(mappedBy = "downloadedVideos", fetch = FetchType.LAZY)
-    private List<User> downloadedUsers;
-
-    @JsonIgnore
-    @ManyToMany(mappedBy = "dislikedVideos", fetch = FetchType.LAZY)
-    private List<User> dislikedUsers;
 }

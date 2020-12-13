@@ -29,7 +29,6 @@ import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Random;
 
 @Service
 @Slf4j
@@ -58,34 +57,39 @@ public class TagServiceImpl implements TagService {
         List<VideoDetail> result = new ArrayList<>();
         tag.setSearchCount(tag.getSearchCount() + 1);
         tagRepository.save(tag);
-        List<Long> videoIds = tagCacheManager.getVideoIdsOfTag(tag);
 
-        if (sort.equals("random")) {
+        List<Long> videoIds = tagCacheManager.getVideoIdsOfTag(tag);
+        if (sort.equals("default")) {
             if (videoIds != null) {
-                for (long id : videoIds) {
+                for (Long id : videoIds) {
                     if (--offset >= 0) continue;
                     if (--limit < 0) break;
-                    result.add(videoRepository.getOne(id));
+                    videoRepository.findById(id).ifPresentOrElse(result::add, () ->
+                            tagRepository.deleteVideoIdForTag(id, tag.getId()));
                 }
             } else {
                 videoIds = tagRepository.findVideoIdsForTag(tag.getId(), offset, limit);
-                for (long id : videoIds) {
-                    videoRepository.findById(id).ifPresent(result::add);
+                for (Long id : videoIds) {
+                    videoRepository.findById(id).ifPresentOrElse(result::add, () ->
+                            tagRepository.deleteVideoIdForTag(id, tag.getId()));
                 }
             }
             Collections.shuffle(result);
+            for (VideoDetail videoDetail : result) videoCacheManager.loadTagsForVideo(videoDetail);
             return result;
         } else {
             if (videoIds != null) {
-                videoIds = videoRepository.findLimitedByIdsWithOrder(videoIds, sort, offset, limit);
+                videoIds = videoRepository.findLimitedInIdsWithOrder(videoIds, sort, offset, limit);
                 for (long id : videoIds) {
-                    videoRepository.findById(id).ifPresent(result::add);
+                    videoRepository.findById(id).ifPresentOrElse(result::add, () ->
+                            tagRepository.deleteVideoIdForTag(id, tag.getId()));
                 }
             } else {
                 result.addAll(videoRepository.findLimitedWithOrder(tag.getId(), sort, offset, limit));
             }
         }
         Collections.shuffle(result);
+        for (VideoDetail videoDetail : result) videoCacheManager.loadTagsForVideo(videoDetail);
         return result;
     }
 

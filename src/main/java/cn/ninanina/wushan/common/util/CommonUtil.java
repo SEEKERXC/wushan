@@ -7,6 +7,7 @@ import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
 import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
 import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
 import org.apache.commons.lang3.CharUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.Random;
 
@@ -43,6 +44,7 @@ public class CommonUtil {
     }
 
     public static boolean videoSrcValid(String src) {
+        if (StringUtils.isEmpty(src)) return false;
         long currentSeconds = System.currentTimeMillis() / 1000;
         long urlSeconds = Long.parseLong(src.substring(src.indexOf("?e=") + 3, src.indexOf("&h="))) - 1800;
         return currentSeconds < urlSeconds;

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import javax.persistence.*;
+import java.io.Serializable;
 import java.util.List;
 
 @Data
@@ -13,7 +14,7 @@ import java.util.List;
 @Table(name = "playlist")
 @EqualsAndHashCode(of = "id")
 @JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
-public class Playlist {
+public class Playlist implements Serializable {
     @Id
     @GeneratedValue
     private Long id;
@@ -46,11 +47,4 @@ public class Playlist {
             joinColumns = {@JoinColumn(name = "dir_id", referencedColumnName = "id", nullable = false)},
             inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
     private List<VideoDetail> collectedVideos;
-
-    @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_collect_tags",
-            joinColumns = {@JoinColumn(name = "dir_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "tag_id", referencedColumnName = "id", nullable = false)})
-    private List<TagDetail> collectedTags;
 }

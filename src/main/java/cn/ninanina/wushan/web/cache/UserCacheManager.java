@@ -25,7 +25,6 @@ public class UserCacheManager {
     public void init() {
         userCache = Caffeine.newBuilder()
                 .initialCapacity(50)
-                .maximumSize(Constant.USER_SCALE)
                 .expireAfterAccess(3600, TimeUnit.SECONDS)
                 .build();
     }

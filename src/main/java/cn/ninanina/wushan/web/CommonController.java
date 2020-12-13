@@ -2,7 +2,7 @@ package cn.ninanina.wushan.web;
 
 import cn.ninanina.wushan.service.BackendService;
 import cn.ninanina.wushan.service.CommonService;
-import cn.ninanina.wushan.service.driver.DriverManager;
+import cn.ninanina.wushan.service.cache.DownloadManager;
 import cn.ninanina.wushan.web.result.Response;
 import cn.ninanina.wushan.web.result.ResultMsg;
 import lombok.extern.slf4j.Slf4j;
@@ -12,10 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Nonnull;
 
@@ -32,7 +29,7 @@ public class CommonController extends BaseController implements ApplicationConte
     private CommonService commonService;
 
     @Autowired
-    private DriverManager driverManager;
+    private DownloadManager downloadManager;
 
     @PostMapping("/shutdown")
     public Response shutdown(@RequestParam("apiKey") String apiKey) {
@@ -70,12 +67,36 @@ public class CommonController extends BaseController implements ApplicationConte
         return result(appKey);
     }
 
-
-    @PostMapping("/driver")
-    public Response registerDriver(@RequestParam("key") String key,
-                                   @RequestParam("ip") String ip) {
+    /**
+     * 添加cookie，只需要session_token就足够了
+     */
+    @PostMapping("/cookie")
+    public Response registerCookie(@RequestParam("key") String key,
+                                   @RequestParam("email") String email,
+                                   @RequestParam("cookie") String cookie) {
         if (!key.equals("jdfohewk")) return result(ResultMsg.ParamError);
-        boolean successful = driverManager.register(ip);
-        return result(successful ? "成功" : "失败，请查看error日志");
+        int size = downloadManager.addCookie(email, cookie);
+        return result("队列当前大小：" + size);
     }
+
+    /**
+     * 获取当前空闲的cookies
+     */
+    @GetMapping("/cookie/all")
+    public Response allCookies(@RequestParam("key") String key) {
+        if (!key.equals("jdfohewk")) return result(ResultMsg.ParamError);
+        return result(downloadManager.getCookies(null, null));
+    }
+
+    /**
+     * 删除错误cookie
+     */
+    @PostMapping("/cookie/delete")
+    public Response deleteCookie(@RequestParam("key") String key,
+                                 @RequestParam("email") String email) {
+        if (!key.equals("jdfohewk")) return result(ResultMsg.ParamError);
+        return result(downloadManager.deleteCookie(email));
+    }
+    //TODO:提供更加直观的cookie管理
+    //todo:长期要做的：根据请求量动态控制cookie数量
 }

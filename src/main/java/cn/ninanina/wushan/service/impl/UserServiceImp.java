@@ -32,6 +32,8 @@ public class UserServiceImp implements UserService {
         if (!StringUtils.isEmpty(nickname)) user.setNickname(nickname);
         else user.setNickname("污友" + randInt);
         if (gender != null) user.setGender(gender);
+        user.setStraight(true);
+        user.setAge(18);
         user.setRegisterTime(System.currentTimeMillis());
         user.setLastLoginTime(System.currentTimeMillis());
         user = userRepository.save(user);
@@ -54,6 +56,17 @@ public class UserServiceImp implements UserService {
         user.setLastLoginTime(System.currentTimeMillis());
         userRepository.save(user);
         return user;
+    }
+
+    @Override
+    public User update(long userId, String password, String nickname, Gender gender, int age, boolean straight) {
+        User user = userRepository.getOne(userId);
+        user.setPassword(password);
+        user.setGender(gender);
+        user.setNickname(nickname);
+        user.setAge(age);
+        user.setStraight(straight);
+        return userRepository.save(user);
     }
 
 }

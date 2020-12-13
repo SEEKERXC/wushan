@@ -1,12 +1,7 @@
 package cn.ninanina.wushan.web;
 
-import cn.ninanina.wushan.domain.Comment;
-import cn.ninanina.wushan.domain.TagDetail;
-import cn.ninanina.wushan.domain.VideoDetail;
-import cn.ninanina.wushan.domain.Playlist;
-import cn.ninanina.wushan.repository.CommentRepository;
-import cn.ninanina.wushan.repository.TagRepository;
-import cn.ninanina.wushan.repository.VideoRepository;
+import cn.ninanina.wushan.domain.*;
+import cn.ninanina.wushan.repository.*;
 import cn.ninanina.wushan.service.CommonService;
 import cn.ninanina.wushan.service.PlaylistService;
 import cn.ninanina.wushan.service.TagService;
@@ -16,10 +11,11 @@ import cn.ninanina.wushan.web.result.Response;
 import cn.ninanina.wushan.web.result.ResultMsg;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.util.Pair;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -39,39 +35,66 @@ public class VideoController extends BaseController {
     @Autowired
     private CommentRepository commentRepository;
     @Autowired
+    private UserRepository userRepository;
+    @Autowired
     private CommonService commonService;
     @Autowired
     private PlaylistService playlistService;
 
+    /**
+     * 首页推荐视频
+     *
+     * @param appKey appKey
+     * @param type   包含hot、recommend、asian、west、lesbian
+     * @param limit  限制数量
+     * @param token  登录依据，可为空
+     */
     @GetMapping("/recommend")
     public Response recommendVideos(@RequestParam("appKey") String appKey,
                                     @RequestParam("type") String type,
-                                    @RequestParam("offset") Integer offset,
                                     @RequestParam("limit") Integer limit,
                                     String token) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (limit <= 0 || limit > 50) return result(ResultMsg.ParamError);
         Long userId = getUserId(token);
         log.info("get recommendVideos, appKey: {}, type: {} ,limit: {}", appKey, type, limit);
-        return result(videoService.recommendVideos(userId, appKey, type, offset, limit));
+        return result(videoService.recommendVideos(userId, appKey, type, limit));
+    }
+
+    /**
+     * 获取当前可以直接看的video
+     */
+    @GetMapping("/instant")
+    public Response instantVideos(@RequestParam("appKey") String appKey,
+                                  @RequestParam("limit") Integer limit,
+                                  String token) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (limit <= 0 || limit > 50) return result(ResultMsg.ParamError);
+        Long userId = getUserId(token);
+        log.info("get instant videos, appKey: {}, limit: {}", appKey, limit);
+        return result(videoService.instantVideos(appKey, userId, limit));
     }
 
     /**
      * 获取最新的有效的视频详情。调用场景：
      * <p>用户播放视频时
      *
-     * @param id 视频id
+     * @param id         视频id
+     * @param withoutSrc 指定不需要实时链接
+     * @param record     指定是否记录观看
      */
     @GetMapping("/detail")
     public Response videoDetail(@RequestParam("appKey") String appKey,
                                 @RequestParam("id") Long id,
-                                String token) {
+                                String token,
+                                Boolean withoutSrc,
+                                Boolean record) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
+        if (videoCacheManager.getVideo(id) == null) return result(ResultMsg.INVALID_VIDEO_ID);
         Long userId = getUserId(token);
         VideoDetail videoDetail;
         log.info("appKey {} get video detail: {}", appKey, id);
-        videoDetail = videoService.getVideoDetail(id, userId);
+        videoDetail = videoService.getVideoDetail(id, userId, withoutSrc, record);
         return result(videoDetail);
     }
 
@@ -82,7 +105,7 @@ public class VideoController extends BaseController {
      */
     @PostMapping("/exit")
     public Response exitVideoDetail(@RequestParam("id") Long id) {
-        if (videoRepository.findById(id).isEmpty()) {
+        if (videoCacheManager.getVideo(id) == null) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
         videoService.exitDetail(id);
@@ -98,25 +121,12 @@ public class VideoController extends BaseController {
     public Response currentAudience(@RequestParam("appKey") String appKey,
                                     @RequestParam("id") Long id) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (videoRepository.findById(id).isEmpty()) {
+        if (videoCacheManager.getVideo(id) == null) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
         int audienceCount = videoService.audiences(id);
         log.info("video {} now audience count: {}", id, audienceCount);
         return result(audienceCount);
-    }
-
-    /**
-     * 获取当前在线视频排行，即按当前观看人数排序的videoList，并且都有有效链接
-     */
-    @GetMapping("/rank/online")
-    public Response onlineRank(@RequestParam("appKey") String appKey,
-                               @RequestParam("offset") Integer offset,
-                               @RequestParam("limit") Integer limit) {
-        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        List<Pair<VideoDetail, Integer>> rank = videoService.onlineRank(offset, limit);
-        log.info("ip {} get online rank, rank size: {}", getIp(), rank.size());
-        return result(rank);
     }
 
     /**
@@ -131,7 +141,7 @@ public class VideoController extends BaseController {
                                   @RequestParam("offset") Integer offset,
                                   @RequestParam("limit") Integer limit) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (videoRepository.findById(id).isEmpty()) {
+        if (videoCacheManager.getVideo(id) == null) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
         if (offset < 0 || limit <= 0 || limit > 50) return result(ResultMsg.ParamError);
@@ -146,18 +156,21 @@ public class VideoController extends BaseController {
      * @param query  关键词
      * @param offset offset
      * @param limit  limit
+     * @param sort   排序依据，random：默认排序，viewed：播放量降序，
+     *               collected：收藏量降序，downloaded：下载量降序，commentNum：评论数降序
      * @return 视频列表
      */
     @GetMapping("/search")
     public Response search(@RequestParam("appKey") String appKey,
                            @RequestParam("query") String query,
                            @RequestParam("offset") Integer offset,
-                           @RequestParam("limit") Integer limit) {
+                           @RequestParam("limit") Integer limit,
+                           @RequestParam("sort") String sort) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (StringUtils.isEmpty(query) || offset < 0 || limit <= 0 || limit > 50)
             return result(ResultMsg.ParamError);
-        List<VideoDetail> result = videoService.search(query, offset, limit);
-        log.info("ip {} search with query {}, offset: {}, limit: {}", getIp(), query, offset, limit);
+        List<VideoDetail> result = videoService.search(query, offset, limit, sort);
+        log.info("ip {} search with query {}, offset: {}, limit: {}, result size: {}", getIp(), query, offset, limit, result.size());
         return result(result);
     }
 
@@ -177,7 +190,7 @@ public class VideoController extends BaseController {
                             @RequestParam("token") String token,
                             Long parentId) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
+        if (videoCacheManager.getVideo(id) == null) return result(ResultMsg.INVALID_VIDEO_ID);
         Long userId = getUserId(token);
         if (userId == null) return result(ResultMsg.NOT_LOGIN);
         if (StringUtils.isEmpty(content.trim())) return result(ResultMsg.EMPTY_CONTENT);
@@ -243,7 +256,7 @@ public class VideoController extends BaseController {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         Long userId = getUserId(token);
         if (userId == null) return result(ResultMsg.NOT_LOGIN);
-        VideoDetail videoDetail = videoRepository.findById(videoId).orElse(null);
+        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
         if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
         if (page < 0 || size <= 0 || size > 50) return result(ResultMsg.ParamError);
         List<Comment> result = videoService.getComments(userId, videoId, page, size, sort);
@@ -399,8 +412,9 @@ public class VideoController extends BaseController {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         Long userId = getUserId(token);
         if (userId == null) return result(ResultMsg.NOT_LOGIN);
-        if (videoRepository.findById(id).isEmpty()) return result(ResultMsg.INVALID_VIDEO_ID);
-        videoService.download(userId, id);
+        VideoDetail videoDetail = videoCacheManager.getVideo(id);
+        if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        videoService.download(userId, videoDetail);
         return result();
     }
 
@@ -434,6 +448,9 @@ public class VideoController extends BaseController {
         return result(tagDetails);
     }
 
+    /**
+     * 标签搜索建议
+     */
     @GetMapping("/tag/suggest")
     public Response suggestTag(@RequestParam("appKey") String appKey,
                                @RequestParam("query") String query) {
@@ -445,6 +462,9 @@ public class VideoController extends BaseController {
         return result(result);
     }
 
+    /**
+     * 搜索标签
+     */
     @GetMapping("/tag/search")
     public Response searchTag(@RequestParam("appKey") String appKey,
                               @RequestParam("query") String query,
@@ -474,21 +494,175 @@ public class VideoController extends BaseController {
             return result(ResultMsg.ParamError);
         TagDetail tagDetail = tagRepository.findById(tagId).orElse(null);
         if (tagDetail == null) return result(ResultMsg.INVALID_TAG_ID);
-        //TODO：对搜索返回的视频列表进行排序
         List<VideoDetail> result = tagService.getVideosForTag(tagDetail, offset, limit, sort);
         log.info("ip {} get videos from tag {}", getIp(), tagId);
         return result(result);
     }
 
     /**
-     * 获取视频数量最多的若干个tag
+     * 获取搜索最多的若干个tag
      *
-     * @param limit tag数量，最好小于1000
+     * @param limit tag数量，最好不超过500
      */
     @GetMapping("/tag/hot")
-    public Response hotTags(@RequestParam("limit") Integer limit) {
-        if (limit <= 0 || limit > tagService.tagCount()) return result(ResultMsg.ParamError, "limit参数错误");
+    public Response hotTags(@RequestParam("appKey") String appKey,
+                            @RequestParam("limit") Integer limit) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (limit <= 0 || limit > tagService.tagCount())
+            return result(ResultMsg.ParamError);
         log.info("get hot tags, limit:{}", limit);
         return result(tagService.hotTags(limit));
+    }
+
+    /**
+     * 返回用户所有的观看记录，不包含视频详情
+     */
+    @GetMapping("/viewed/all")
+    public Response allViewed(@RequestParam("appKey") String appKey,
+                              @RequestParam("token") String token) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        List<VideoUserViewed> result = videoService.allViewed(userId);
+        log.info("user {} get all viewed, size {}", userId, result.size());
+        return result(result);
+    }
+
+    /**
+     * 返回用户的部分观看记录，包含观看信息与视频详情
+     */
+    @GetMapping("/viewed")
+    public Response viewedVideos(@RequestParam("appKey") String appKey,
+                                 @RequestParam("token") String token,
+                                 @RequestParam(value = "offset", required = false) Integer offset,
+                                 @RequestParam(value = "limit", required = false) Integer limit,
+                                 @RequestParam(value = "startOfDay", required = false) Long startOfDay) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (offset != null && limit != null && (offset < 0 || limit < 0 || limit > 50))
+            return result(ResultMsg.ParamError);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        User user = userRepository.getOne(userId);
+        if (startOfDay != null && (startOfDay > System.currentTimeMillis() || startOfDay < user.getRegisterTime()))
+            return result(ResultMsg.ParamError);
+        List<Pair<VideoUserViewed, VideoDetail>> result = videoService.viewedVideos(userId, offset, limit, startOfDay);
+        log.info("user {} get viewed videos. offset {}, limit {}, result size {}", userId, offset, limit, result.size());
+        return result(result);
+    }
+
+    /**
+     * 删除观看记录
+     *
+     * @param ids 观看记录id
+     */
+    @PostMapping("/viewed/delete")
+    public Response deleteViewed(@RequestParam("appKey") String appKey,
+                                 @RequestParam("token") String token,
+                                 @RequestParam("ids") List<Long> ids) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        videoService.deleteViewed(ids);
+        return result();
+    }
+
+    /**
+     * 喜欢/取消喜欢视频
+     */
+    @PostMapping("/like")
+    public Response likeVideo(@RequestParam("appKey") String appKey,
+                              @RequestParam("token") String token,
+                              @RequestParam("videoId") Long videoId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
+        if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        return result(videoService.likeVideo(userId, videoDetail));
+    }
+
+    /**
+     * 获取用户所有喜欢的视频id
+     */
+    @GetMapping("/liked")
+    public Response likedVideo(@RequestParam("appKey") String appKey,
+                               @RequestParam("token") String token) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        return result(videoService.likedVideos(userId));
+    }
+
+    /**
+     * 不喜欢/取消不喜欢视频
+     */
+    @PostMapping("/dislike")
+    public Response dislikeVideo(@RequestParam("appKey") String appKey,
+                                 @RequestParam("token") String token,
+                                 @RequestParam("videoId") Long videoId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        VideoDetail videoDetail = videoRepository.findById(videoId).orElse(null);
+        if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        return result(videoService.dislikeVideo(userId, videoDetail));
+    }
+
+    /**
+     * 获取用户所有不喜欢的视频id
+     */
+    @GetMapping("/disliked")
+    public Response dislikedVideo(@RequestParam("appKey") String appKey,
+                                  @RequestParam("token") String token) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        return result(videoService.dislikedVideos(userId));
+    }
+
+    /**
+     * 新增稍后观看
+     */
+    @PostMapping("/toWatch")
+    public Response addToWatch(@RequestParam("appKey") String appKey,
+                               @RequestParam("token") String token,
+                               @RequestParam("videoId") Long videoId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        ToWatch toWatch = videoService.newToWatch(userId, videoId);
+        log.info("use {} add a new toWatch, id: {}, video {}", userId, toWatch.getId(), videoId);
+        return result(toWatch);
+    }
+
+    /**
+     * 删除稍后看
+     */
+    @PostMapping("/toWatch/delete")
+    public Response deleteToWatch(@RequestParam("appKey") String appKey,
+                                  @RequestParam("token") String token,
+                                  @RequestParam("ids") List<Long> ids) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        videoService.deleteToWatch(ids);
+        log.info("user {} deleted toWatches {}", userId, ids.toArray());
+        return result();
+    }
+
+    /**
+     * 获取稍后看
+     */
+    @GetMapping("/toWatch")
+    public Response getToWatches(@RequestParam("appKey") String appKey,
+                                 @RequestParam("token") String token,
+                                 @RequestParam("offset") Integer offset,
+                                 @RequestParam("limit") Integer limit) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        List<Pair<ToWatch, VideoDetail>> toWatches = videoService.listToWatches(userId, offset, limit);
+        log.info("user {} get toWatches, result size {}", userId, toWatches.size());
+        return result(toWatches);
     }
 }

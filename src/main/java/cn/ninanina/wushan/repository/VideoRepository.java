@@ -1,15 +1,20 @@
 package cn.ninanina.wushan.repository;
 
 import cn.ninanina.wushan.domain.VideoDetail;
+import cn.ninanina.wushan.domain.VideoUserViewed;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import javax.transaction.Transactional;
 import java.util.List;
 import java.util.Set;
 
 public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
+
+    @Query(value = "select max(id) from video", nativeQuery = true)
+    Long findMaxId();
 
     @Query(value = "select min(id) from video where titleZh is null", nativeQuery = true)
     Long findTranslateWatermark();
@@ -44,8 +49,8 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
     /**
      * 对给定的id集合进行排序并抽取一部分，返回子id集合。不能返回video集合，因为会使offset变得很慢。
      */
-    @Query(value = "select id from video where id in ?1 order by ?2 limit ?3, ?4", nativeQuery = true)
-    List<Long> findLimitedByIdsWithOrder(List<Long> ids, String order, int offset, int limit);
+    @Query(value = "select video.id from video where video.id in (:ids) order by " + "video." + ":order desc limit :offset, :limit", nativeQuery = true)
+    List<Long> findLimitedInIdsWithOrder(@Param("ids") List<Long> ids, @Param("order") String order, @Param("offset") Integer offset, @Param("limit") Integer limit);
 
     /**
      * 对于视频数量较少的tag，直接采用sql获取
@@ -56,22 +61,5 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
     //获取某标签的某一个视频的封面
     @Query(value = "select coverUrl from video where id = (select video_id from video_tag where tag_id = ?1 limit 1)", nativeQuery = true)
     String findCoverForTag(long tagId);
-
-    /**
-     * 查看用户是否看过某视频
-     */
-    @Query(value = "select count(1) from video_user_viewed where video_id = ?1 and user_id = ?2", nativeQuery = true)
-    int findViewed(long videoId, long userId);
-
-    /**
-     * 找出所有用户看过的视频id
-     */
-    @Query(value = "select video_id from video_user_viewed where user_id = ?1", nativeQuery = true)
-    List<Long> findViewedIds(long userId);
-
-    @Modifying
-    @Transactional
-    @Query(value = "insert into video_user_viewed values ( ?1, ?2 )", nativeQuery = true)
-    void insertViewedVideo(long videoId, long userId);
 
 }

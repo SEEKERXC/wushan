@@ -22,6 +22,11 @@ public interface PlaylistRepository extends JpaRepository<Playlist, Long> {
     @Query(value = "delete from video_collect where video_id = ?1 and dir_id = ?2", nativeQuery = true)
     void deleteCollect(long videoId, long playlistId);
 
+    @Modifying
+    @Transactional
+    @Query(value = "delete from video_collect where dir_id = ?1", nativeQuery = true)
+    void deleteCollect(long playlistId);
+
     /**
      * 获取用户所有的收藏夹的id
      */
@@ -33,4 +38,9 @@ public interface PlaylistRepository extends JpaRepository<Playlist, Long> {
      */
     @Query(value = "select video_id from video_collect where dir_id = ?1", nativeQuery = true)
     List<Long> findAllVideoIds(long playlistId);
+
+    @Modifying
+    @Transactional
+    @Query(value = "delete from playlist where id = ?1", nativeQuery = true)
+    void remove(long playlistId);
 }

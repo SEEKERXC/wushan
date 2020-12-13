@@ -21,10 +21,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/**
- * 用于直接获取最常用的极少一部分tag，降低一些数据库压力
- * 将视频数大于1000的tag的所有视频id都放入内存，大概会占用1MB（目前video总数130K）。
- */
 @Component("tagCacheManager")
 @Slf4j
 public class TagCacheManager {
@@ -39,12 +35,13 @@ public class TagCacheManager {
     public void init() {
         tagCache = Caffeine.newBuilder()
                 .initialCapacity(250)
-                .maximumSize(500)
+                .maximumSize(10000)
                 .build(key -> {
                     log.info("load tag from repo. key: {}, size: {}", key, tagCache.estimatedSize() + 1);
-                    TagDetail tagDetail = tagRepository.getOne(key);
-                    videoIdMap.put(tagDetail, tagRepository.findVideoIdsForTag(
-                            tagDetail.getId(), 0, tagDetail.getVideoCount()));
+                    TagDetail tagDetail = tagRepository.findById(key).orElse(null);
+                    if (tagDetail != null)
+                        videoIdMap.put(tagDetail, tagRepository.findVideoIdsForTag(
+                                tagDetail.getId(), 0, tagDetail.getVideoCount()));
                     return tagDetail;
                 });
         videoIdMap = new HashMap<>();

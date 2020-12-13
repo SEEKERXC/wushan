@@ -92,6 +92,23 @@ public class UserController extends BaseController {
     }
 
     /**
+     * 变性
+     */
+    @PostMapping("/update")
+    public Response update(@RequestParam("appKey") String appKey,
+                           @RequestParam("token") String token,
+                           @RequestParam("gender") Gender gender,
+                           @RequestParam("password") String password,
+                           @RequestParam("nickname") String nickname,
+                           @RequestParam("age") Integer age,
+                           @RequestParam("straight") Boolean straight) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        return result(userService.update(userId, password, nickname, gender, age, straight));
+    }
+
+    /**
      * 生成用户token
      */
     private String genToken(String appKey, String username) {

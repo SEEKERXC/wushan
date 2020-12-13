@@ -18,7 +18,7 @@ import java.io.IOException;
 public class LuceneUtil {
     private static final LuceneUtil instance = new LuceneUtil();
 
-    private final Analyzer analyzer = new IKAnalyzer();
+    private final Analyzer analyzer = new IKAnalyzer(true);
     private final FSDirectory directory;
     private final FSDirectory tagIndexDirectory;
     private IndexReader indexReader;

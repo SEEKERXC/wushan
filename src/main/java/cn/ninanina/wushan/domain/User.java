@@ -49,26 +49,8 @@ public class User implements Serializable {
     @Column(nullable = false)
     private Long lastLoginTime;
 
-    @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_user_viewed",
-            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
-    private List<VideoDetail> viewedVideos;
-
-    @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_user_download",
-            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
-    private List<VideoDetail> downloadedVideos;
-
-    @JsonIgnore
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "video_user_dislike",
-            joinColumns = {@JoinColumn(name = "user_id", referencedColumnName = "id", nullable = false)},
-            inverseJoinColumns = {@JoinColumn(name = "video_id", referencedColumnName = "id", nullable = false)})
-    private List<VideoDetail> dislikedVideos;
+    @Column(nullable = false, columnDefinition = "bit(1) default false")
+    private Boolean straight; //性取向：直
 
     @ManyToMany(mappedBy = "approvedUsers", fetch = FetchType.LAZY)
     @JsonIgnore

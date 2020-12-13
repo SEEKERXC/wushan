@@ -7,6 +7,7 @@ import cn.ninanina.wushan.repository.UserRepository;
 import cn.ninanina.wushan.repository.PlaylistRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
 import cn.ninanina.wushan.service.PlaylistService;
+import cn.ninanina.wushan.service.cache.VideoCacheManager;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,8 @@ public class PlaylistServiceImp implements PlaylistService {
     private UserRepository userRepository;
     @Autowired
     private VideoRepository videoRepository;
+    @Autowired
+    private VideoCacheManager videoCacheManager;
 
     @Override
     public Playlist create(@Nonnull Long userId, @Nonnull String name) {
@@ -57,8 +60,10 @@ public class PlaylistServiceImp implements PlaylistService {
 
     @Override
     public void delete(@Nonnull Long id) {
-        playlistRepository.deleteById(id);
-        log.info("removed dir, id:{}", id);
+        playlistRepository.deleteCollect(id);
+        playlistRepository.remove(id);
+        playlistRepository.flush();
+        log.info("removed playlist, id:{}", id);
     }
 
     @Override
@@ -90,7 +95,7 @@ public class PlaylistServiceImp implements PlaylistService {
         playlist.setCover(videoDetail.getCoverUrl());
         playlistRepository.save(playlist);
         videoDetail.setCollected(videoDetail.getCollected() + 1);
-        videoRepository.save(videoDetail);
+        videoCacheManager.saveVideo(videoDetail);
         return true;
     }
 
@@ -105,7 +110,7 @@ public class PlaylistServiceImp implements PlaylistService {
         playlist.setUpdateTime(System.currentTimeMillis());
         playlistRepository.save(playlist);
         videoDetail.setCollected(videoDetail.getCollected() - 1);
-        videoRepository.save(videoDetail);
+        videoCacheManager.saveVideo(videoDetail);
         return true;
     }
 
@@ -113,6 +118,8 @@ public class PlaylistServiceImp implements PlaylistService {
     public List<VideoDetail> listVideos(@Nonnull Long id) {
         Playlist playlist = playlistRepository.findById(id).orElse(null);
         if (playlist == null) return null;
-        return playlist.getCollectedVideos();
+        List<VideoDetail> videoDetails = playlist.getCollectedVideos();
+        for (VideoDetail videoDetail : videoDetails) videoCacheManager.loadTagsForVideo(videoDetail);
+        return videoDetails;
     }
 }
