@@ -40,6 +40,9 @@ public class Comment implements Serializable {
     @Column
     private Long parentId;
 
+    @Transient
+    private Comment parent;
+
     @ManyToOne(fetch = FetchType.LAZY)
     private User user;
 

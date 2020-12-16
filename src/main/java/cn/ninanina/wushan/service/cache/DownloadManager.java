@@ -52,7 +52,7 @@ public class DownloadManager {
     @PostConstruct
     public void init() {
         redisTemplate.setKeySerializer(RedisSerializer.string());
-        redisTemplate.setValueSerializer(RedisSerializer.string());
+        redisTemplate.setValueSerializer(RedisSerializer.json());
     }
 
     public int addCookie(String email, String cookie) {
@@ -70,7 +70,8 @@ public class DownloadManager {
 
     public Pair<String, String> getCookie() {
         ListOperations listOperations = redisTemplate.opsForList();
-        String strPair = (String) listOperations.rightPop("cookie");
+        String strPair = (String) listOperations.rightPop("cookie", 5000, TimeUnit.MILLISECONDS);
+        if (StringUtils.isEmpty(strPair)) return null;
         String email = strPair.substring(0, strPair.indexOf("divider"));
         String cookie = strPair.substring(strPair.indexOf("divider") + 7);
         return Pair.of(email, cookie);
@@ -87,8 +88,20 @@ public class DownloadManager {
                 String cookie = s.substring(s.indexOf("divider") + 7);
                 result.add(Pair.of(email, cookie));
             }
+        } else {
+            for (long i = offset; i < offset + limit && i < size; i++) {
+                String s = (String) listOperations.index("cookie", i);
+                String email = s.substring(0, s.indexOf("divider"));
+                String cookie = s.substring(s.indexOf("divider") + 7);
+                result.add(Pair.of(email, cookie));
+            }
         }
         return result;
+    }
+
+    public long cookieCount() {
+        ListOperations listOperations = redisTemplate.opsForList();
+        return listOperations.size("cookie");
     }
 
     public boolean deleteCookie(String email) {

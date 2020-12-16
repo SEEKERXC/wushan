@@ -56,6 +56,8 @@ public class VideoServiceImpl implements VideoService {
     @Autowired
     private SearchCacheManager searchCacheManager;
     @Autowired
+    private UserDataCacheManager userDataCacheManager;
+    @Autowired
     private VideoRepository videoRepository;
     @Autowired
     private VideoRepositoryImpl videoRepositoryImpl;
@@ -87,36 +89,35 @@ public class VideoServiceImpl implements VideoService {
             case "recommend": //根据用户的观看、收藏、下载与不喜欢等行为进行推荐
                 List<VideoDetail> recommendResult = new ArrayList<>();
                 if (userId == null) return jingxuanVideos(appKey, limit);
-                List<Long> viewedVideoIds = viewedRepository.findViewedIds(userId);
-                List<Long> playlistIds = playlistRepository.findAllPlaylistIds(userId);
-                List<Long> downloadedIds = downloadRepository.findVideoIdsByUserId(userId);
-                List<Long> dislikedIds = dislikeRepository.findVideoIdsByUserId(userId);
-                List<Long> collectedVideoIds = new ArrayList<>();
-                for (long playlistId : playlistIds) {
-                    collectedVideoIds.addAll(playlistRepository.findAllVideoIds(playlistId));
-                }
+                List<Long> viewedVideoIds = userDataCacheManager.getViewedIds(userId);
+                List<Long> downloadedIds = userDataCacheManager.getDownloadedIds(userId);
+                List<Long> likedIds = userDataCacheManager.getLikedIds(userId);
+                List<Long> dislikedIds = userDataCacheManager.getDislikedIds(userId);
+                List<Long> collectedVideoIds = userDataCacheManager.getCollectedIds(userId);
                 if (CollectionUtils.isEmpty(viewedVideoIds)
                         && CollectionUtils.isEmpty(collectedVideoIds)
-                        && CollectionUtils.isEmpty(downloadedIds)) {
+                        && CollectionUtils.isEmpty(downloadedIds)
+                        && CollectionUtils.isEmpty(likedIds)) {
                     return jingxuanVideos(appKey, limit);
                 }
-                Collections.shuffle(viewedVideoIds);
-                Collections.shuffle(collectedVideoIds);
                 List<Long> ids = new ArrayList<>();
                 ids.addAll(collectedVideoIds);
                 ids.addAll(downloadedIds); //下载的和收藏的应具有相同比重
                 Collections.shuffle(ids);
+                Collections.shuffle(viewedVideoIds);
+                Collections.shuffle(likedIds);
+                ids.addAll(likedIds); //喜欢的视频比重稍微低一点
                 ids.addAll(viewedVideoIds);
                 for (long id : ids) {
                     List<Long> relatedIds = getRelatedVideoIds(id);
                     for (long relatedId : relatedIds) {
-                        if (!recommendCacheManager.exist(appKey, relatedId) //TODO:添加下载过
+                        if (!recommendCacheManager.exist(appKey, relatedId)
                                 && !collectedVideoIds.contains(relatedId)
                                 && !downloadedIds.contains(relatedId)
                                 && !viewedVideoIds.contains(relatedId)
                                 && !dislikedIds.contains(relatedId)) {
                             VideoDetail video = videoCacheManager.getIfPresent(relatedId);
-                            if (video == null)  //TODO:配置redis缓存，一级缓存如果没有，先从redis缓存中获取，没有再访问数据库。
+                            if (video == null)
                                 videoRepository.findById(relatedId).ifPresent(recommendResult::add);
                             else recommendResult.add(video);
                             recommendCacheManager.save(appKey, relatedId);
@@ -339,7 +340,11 @@ public class VideoServiceImpl implements VideoService {
         comment.setUser(user);
         comment.setApprove(0);
         comment.setDisapprove(0);
-        if (parentId != null) comment.setParentId(parentId);
+        Comment parent = commentRepository.findById(parentId).orElse(null);
+        if (parent != null) {
+            comment.setParentId(parentId);
+            comment.setParent(parent);
+        }
         comment.setTime(System.currentTimeMillis());
         comment = commentRepository.save(comment);
         comment.setApproved(false);
@@ -409,6 +414,9 @@ public class VideoServiceImpl implements VideoService {
         for (Comment c : commentList) {
             c.setApproved(commentRepository.findApproved(c.getId(), userId) > 0);
             c.setDisapproved(commentRepository.findDisapproved(c.getId(), userId) > 0);
+            if (c.getParentId() != null && c.getParentId() > 0) {
+                c.setParent(commentRepository.findById(c.getParentId()).orElse(null));
+            }
         }
         return commentList;
     }
@@ -488,7 +496,7 @@ public class VideoServiceImpl implements VideoService {
         List<Long> collectedVideoIds = new ArrayList<>();
         List<Long> dislikedVideoIds = new ArrayList<>();
         List<Long> downloadedIds = new ArrayList<>();
-        if (userId != null) { //todo：将登录的用户看过的id、收藏的id、下载的id、喜欢的id和不喜欢的id都放入缓存
+        if (userId != null) {
             viewedVideoIds.addAll(viewedRepository.findViewedIds(userId));
             List<Long> playlistIds = playlistRepository.findAllPlaylistIds(userId);
             for (long playlistId : playlistIds) {
@@ -523,53 +531,74 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public boolean likeVideo(@Nonnull Long userId, @Nonnull VideoDetail video) {
+    public VideoDetail likeVideo(@Nonnull Long userId, @Nonnull VideoDetail video) {
         VideoUserLike like = likeRepository.findByUserIdAndVideoId(userId, video.getId());
         if (like == null) {
+            VideoUserDislike dislike = dislikeRepository.findByUserIdAndVideoId(userId, video.getId());
+            if (dislike != null) {
+                dislikeRepository.delete(dislike);
+                video.setDisliked(video.getDisliked() - 1);
+            }
             like = new VideoUserLike();
             like.setUserId(userId);
             like.setVideoId(video.getId());
+            like.setTime(System.currentTimeMillis());
             video.setLiked(video.getLiked() + 1);
+            video.setLike(true);
             likeRepository.save(like);
             videoRepository.save(video);
             log.info("user {} like video {}", userId, video.getId());
-            return true;
         } else {
             likeRepository.delete(like);
             video.setLiked(video.getLiked() - 1);
+            video.setLike(false);
             videoRepository.save(video);
             log.info("user {} canceled liking video {}", userId, video.getId());
-            return false;
         }
+        return video;
     }
 
     @Override
     public List<Long> likedVideos(@Nonnull Long userId) {
-        List<Long> result = new ArrayList<>();
-        List<VideoUserLike> likes = likeRepository.findByUserId(userId);
-        for (VideoUserLike like : likes) result.add(like.getVideoId());
+        return likeRepository.findByUserId(userId);
+    }
+
+    @Override
+    public List<VideoDetail> likedVideos(long userId, int offset, int limit) {
+        List<VideoDetail> result = new ArrayList<>();
+        List<Long> ids = likeRepository.findByUserId(userId, offset, limit);
+        for (long id : ids) {
+            VideoDetail videoDetail = videoCacheManager.getVideo(id);
+            if (videoDetail != null) result.add(videoDetail);
+        }
         return result;
     }
 
     @Override
-    public boolean dislikeVideo(@Nonnull Long userId, @Nonnull VideoDetail video) {
+    public VideoDetail dislikeVideo(@Nonnull Long userId, @Nonnull VideoDetail video) {
         VideoUserDislike dislike = dislikeRepository.findByUserIdAndVideoId(userId, video.getId());
         if (dislike == null) {
+            VideoUserLike like = likeRepository.findByUserIdAndVideoId(userId, video.getId());
+            if (like != null) {
+                likeRepository.delete(like);
+                video.setLiked(video.getLiked() - 1);
+            }
             dislike = new VideoUserDislike();
             dislike.setUserId(userId);
             dislike.setVideoId(video.getId());
             video.setDisliked(video.getDisliked() + 1);
+            video.setDislike(true);
             dislikeRepository.save(dislike);
             videoRepository.save(video);
             log.info("user {} dislike video {}", userId, video.getId());
-            return true;
         } else {
             dislikeRepository.delete(dislike);
             video.setDisliked(video.getDisliked() - 1);
+            video.setDislike(false);
             videoRepository.save(video);
             log.info("user {} canceled disliking video {}", userId, video.getId());
-            return false;
         }
+        return video;
     }
 
     @Override

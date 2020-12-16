@@ -50,12 +50,12 @@ public class PlaylistServiceImp implements PlaylistService {
     }
 
     @Override
-    public Playlist possess(@Nonnull Long userId, @Nonnull Long dirId) {
-        User user = userRepository.getOne(userId);
-        List<Playlist> dirs = user.getPlaylists();
-        Playlist playlist = playlistRepository.getOne(dirId);
-        if (dirs.contains(playlist)) return playlist;
-        else return null;
+    public Playlist possess(@Nonnull Long userId, @Nonnull Long playlistId) {
+        Playlist playlist = null;
+        if (playlistRepository.findPossess(userId, playlistId) > 0) {
+            playlist = playlistRepository.getOne(playlistId);
+        }
+        return playlist;
     }
 
     @Override
@@ -92,7 +92,7 @@ public class PlaylistServiceImp implements PlaylistService {
         log.info("collected video, dir id: {}, video id: {}", playlist.getId(), videoDetail.getId());
         playlist.setUpdateTime(System.currentTimeMillis());
         playlist.setCount(playlist.getCount() + 1);
-        playlist.setCover(videoDetail.getCoverUrl());
+        if (!playlist.getUserSetCover()) playlist.setCover(videoDetail.getCoverUrl());
         playlistRepository.save(playlist);
         videoDetail.setCollected(videoDetail.getCollected() + 1);
         videoCacheManager.saveVideo(videoDetail);

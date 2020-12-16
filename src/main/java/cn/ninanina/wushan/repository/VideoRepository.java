@@ -47,12 +47,6 @@ public interface VideoRepository extends JpaRepository<VideoDetail, Long> {
     void deleteFromRelated(long videoId);
 
     /**
-     * 对给定的id集合进行排序并抽取一部分，返回子id集合。不能返回video集合，因为会使offset变得很慢。
-     */
-    @Query(value = "select video.id from video where video.id in (:ids) order by " + "video." + ":order desc limit :offset, :limit", nativeQuery = true)
-    List<Long> findLimitedInIdsWithOrder(@Param("ids") List<Long> ids, @Param("order") String order, @Param("offset") Integer offset, @Param("limit") Integer limit);
-
-    /**
      * 对于视频数量较少的tag，直接采用sql获取
      */
     @Query(value = "select * from video where id in ( select video_id from video_tag where tag_id = ?1 ) order by ?2 desc limit ?3, ?4", nativeQuery = true)

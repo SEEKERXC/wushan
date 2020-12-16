@@ -6,6 +6,7 @@ import cn.ninanina.wushan.domain.TagDetail;
 import cn.ninanina.wushan.domain.VideoDetail;
 import cn.ninanina.wushan.repository.TagRepository;
 import cn.ninanina.wushan.repository.VideoRepository;
+import cn.ninanina.wushan.repository.VideoRepositoryImpl;
 import cn.ninanina.wushan.service.TagService;
 import cn.ninanina.wushan.service.cache.TagCacheManager;
 import cn.ninanina.wushan.service.cache.VideoCacheManager;
@@ -28,6 +29,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -37,6 +39,8 @@ public class TagServiceImpl implements TagService {
     private TagRepository tagRepository;
     @Autowired
     private VideoRepository videoRepository;
+    @Autowired
+    private VideoRepositoryImpl videoRepositoryImpl;
     @Autowired
     private TagCacheManager tagCacheManager;
     @Autowired
@@ -79,7 +83,7 @@ public class TagServiceImpl implements TagService {
             return result;
         } else {
             if (videoIds != null) {
-                videoIds = videoRepository.findLimitedInIdsWithOrder(videoIds, sort, offset, limit);
+                videoIds = videoRepositoryImpl.findLimitedInIdsWithOrder(videoIds, sort, offset, limit);
                 for (long id : videoIds) {
                     videoRepository.findById(id).ifPresentOrElse(result::add, () ->
                             tagRepository.deleteVideoIdForTag(id, tag.getId()));
@@ -95,11 +99,31 @@ public class TagServiceImpl implements TagService {
 
     @Override
     public List<TagDetail> getTagsStartWith(char c, int page, int size) {
-        TagDetail tagDetail = new TagDetail();
-        tagDetail.setStart(c);
-        Page<TagDetail> tagDetails = tagRepository.findAll(Example.of(tagDetail),
-                PageRequest.of(page, size, Sort.by(new Sort.Order(Sort.Direction.DESC, "videoCount"))));
-        List<TagDetail> result = tagDetails.getContent();
+        List<TagDetail> result = new ArrayList<>();
+        if (c >= 'a' && c <= 'z') {
+            TagDetail tagDetail = new TagDetail();
+            tagDetail.setStart(c);
+            Page<TagDetail> tagDetails = tagRepository.findAll(Example.of(tagDetail),
+                    PageRequest.of(page, size, Sort.by(new Sort.Order(Sort.Direction.DESC, "videoCount"))));
+            result.addAll(tagDetails.getContent());
+        } else if (c == '~') { //热门
+            if (page == 0) {
+                List<Long> ids = tagRepository.findHotTagIds(100);
+                for (long id : ids) {
+                    result.add(tagCacheManager.getTag(id));
+                }
+            }
+        } else if (c == '#') { //数字开头
+            if (page == 0) { //第一页全部加载完
+                char[] chars = new char[]{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'};
+                for (char c1 : chars) {
+                    TagDetail tagDetail = new TagDetail();
+                    tagDetail.setStart(c1);
+                    result.addAll(tagRepository.findAll(Example.of(tagDetail)));
+                }
+                result.sort((o1, o2) -> o2.getVideoCount() - o1.getVideoCount());
+            }
+        }
         for (TagDetail tag : result) {
             if (StringUtils.isEmpty(tag.getCover())) {
                 String cover = videoRepository.findCoverForTag(tag.getId());

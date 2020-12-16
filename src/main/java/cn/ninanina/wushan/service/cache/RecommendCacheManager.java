@@ -33,7 +33,7 @@ public class RecommendCacheManager {
      */
     public void save(String appKey, long videoId) {
         SetOperations setOperations = redisTemplate.opsForSet();
-        setOperations.add(appKey, videoId);
+        setOperations.add(appKey, String.valueOf(videoId));
         redisTemplate.expire(appKey, 30, TimeUnit.DAYS);
     }
 
@@ -42,7 +42,7 @@ public class RecommendCacheManager {
      */
     public boolean exist(String appKey, long videoId) {
         SetOperations setOperations = redisTemplate.opsForSet();
-        return setOperations.isMember(appKey, videoId);
+        return setOperations.isMember(appKey, String.valueOf(videoId));
     }
 
     /**

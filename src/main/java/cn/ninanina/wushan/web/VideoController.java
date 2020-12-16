@@ -37,6 +37,8 @@ public class VideoController extends BaseController {
     @Autowired
     private UserRepository userRepository;
     @Autowired
+    private PlaylistRepository playlistRepository;
+    @Autowired
     private CommonService commonService;
     @Autowired
     private PlaylistService playlistService;
@@ -104,7 +106,9 @@ public class VideoController extends BaseController {
      * @param id 视频id
      */
     @PostMapping("/exit")
-    public Response exitVideoDetail(@RequestParam("id") Long id) {
+    public Response exitVideoDetail(@RequestParam("appKey") String appKey,
+                                    @RequestParam("id") Long id) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (videoCacheManager.getVideo(id) == null) {
             return result(ResultMsg.INVALID_VIDEO_ID);
         }
@@ -401,6 +405,31 @@ public class VideoController extends BaseController {
     }
 
     /**
+     * 更新收藏夹
+     */
+    @PostMapping("/playlist/update")
+    public Response updatePlaylist(@RequestParam("appKey") String appKey,
+                                   @RequestParam("token") String token,
+                                   @RequestParam("dirId") Long dirId,
+                                   @RequestParam("coverUrl") String coverUrl,
+                                   @RequestParam("name") String name,
+                                   @RequestParam("isPublic") Boolean isPublic) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        Playlist playlist = playlistService.possess(userId, dirId);
+        if (playlist == null) return result(ResultMsg.COLLECT_WRONG_DIR);
+        if (!playlist.getCover().equals(coverUrl)) playlist.setUserSetCover(true);
+        playlist.setCover(coverUrl);
+        playlist.setName(name);
+        playlist.setIsPublic(isPublic);
+        playlist.setUpdateTime(System.currentTimeMillis());
+        playlist = playlistRepository.save(playlist);
+        log.info("user {} updated playlist {}", userId, dirId);
+        return result(playlist);
+    }
+
+    /**
      * 下载视频
      *
      * @param id 视频id
@@ -435,7 +464,7 @@ public class VideoController extends BaseController {
     }
 
     /**
-     * 获取以c为首字符的标签列表，按照视频数量排序
+     * 获取以c为首字符的标签列表，按照视频数量排序，热门标签标记为~，其他字符标记为#
      */
     @GetMapping("/tags")
     public Response getTags(@RequestParam("appKey") String appKey,
@@ -579,6 +608,22 @@ public class VideoController extends BaseController {
         VideoDetail videoDetail = videoCacheManager.getVideo(videoId);
         if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
         return result(videoService.likeVideo(userId, videoDetail));
+    }
+
+    /**
+     * 分页获取喜欢的视频
+     */
+    @GetMapping("/like")
+    public Response likeVideos(@RequestParam("appKey") String appKey,
+                               @RequestParam("token") String token,
+                               @RequestParam("offset") Integer offset,
+                               @RequestParam("limit") Integer limit) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        List<VideoDetail> videoDetails = videoService.likedVideos(userId, offset, limit);
+        log.info("user {} get liked videos, result size {}", userId, videoDetails.size());
+        return result(videoDetails);
     }
 
     /**

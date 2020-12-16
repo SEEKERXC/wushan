@@ -89,6 +89,15 @@ public class CommonController extends BaseController implements ApplicationConte
     }
 
     /**
+     * 查看当前队列中cookie总数
+     */
+    @GetMapping("/cookie/count")
+    public Response cookieCount(@RequestParam("key") String key) {
+        if (!key.equals("jdfohewk")) return result(ResultMsg.ParamError);
+        return result(downloadManager.cookieCount());
+    }
+
+    /**
      * 删除错误cookie
      */
     @PostMapping("/cookie/delete")
@@ -98,5 +107,4 @@ public class CommonController extends BaseController implements ApplicationConte
         return result(downloadManager.deleteCookie(email));
     }
     //TODO:提供更加直观的cookie管理
-    //todo:长期要做的：根据请求量动态控制cookie数量
 }

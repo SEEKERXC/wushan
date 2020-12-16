@@ -25,7 +25,7 @@ public interface TagService {
     /**
      * 获取以首字母开头的标签，包含数字，全小写
      *
-     * @param c 首字母，即a-z、0-9
+     * @param c 首字母，热门标签为~，其他字符为#
      */
     List<TagDetail> getTagsStartWith(char c,int page, int size);
 

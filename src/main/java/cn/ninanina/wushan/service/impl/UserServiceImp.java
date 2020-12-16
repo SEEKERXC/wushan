@@ -43,6 +43,7 @@ public class UserServiceImp implements UserService {
         playlist.setUpdateTime(System.currentTimeMillis());
         playlist.setIsPublic(true);
         playlist.setCount(0);
+        playlist.setUserSetCover(false);
         playlist.setUser(user);
         playlistRepository.save(playlist);
         return user;

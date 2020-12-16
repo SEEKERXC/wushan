@@ -22,6 +22,9 @@ public class Playlist implements Serializable {
     @Column(nullable = false)
     private String name;
 
+    @Column(nullable = false, columnDefinition = "bit(1) default false")
+    private Boolean userSetCover; //用户主动设置了封面
+
     @Column
     private String cover;
 

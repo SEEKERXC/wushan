@@ -36,4 +36,8 @@ public interface TagRepository extends JpaRepository<TagDetail, Long> {
     @Transactional
     @Query(value = "delete from video_tag where video_id = ?1 and tag_id = ?2", nativeQuery = true)
     void deleteVideoIdForTag(long videoId, long tagId);
+
+    //获取视频数量最多的若干个tag的id
+    @Query(value = "select id from tag order by videoCount desc limit ?1", nativeQuery = true)
+    List<Long> findHotTagIds(int limit);
 }

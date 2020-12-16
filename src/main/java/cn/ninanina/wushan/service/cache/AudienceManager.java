@@ -30,7 +30,7 @@ public class AudienceManager {
     @PostConstruct
     public void init() {
         redisTemplate.setKeySerializer(RedisSerializer.string());
-        redisTemplate.setValueSerializer(RedisSerializer.string());
+        redisTemplate.setValueSerializer(RedisSerializer.json());
     }
 
     public void increase(long videoId) {

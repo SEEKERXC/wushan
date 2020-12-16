@@ -34,6 +34,12 @@ public interface PlaylistRepository extends JpaRepository<Playlist, Long> {
     List<Long> findAllPlaylistIds(long userId);
 
     /**
+     * 查看收藏夹是否属于用户
+     */
+    @Query(value = "select count(1) from playlist where user_id = ?1 and id = ?2", nativeQuery = true)
+    int findPossess(long userId, long playlistId);
+
+    /**
      * 获取收藏夹的所有视频id
      */
     @Query(value = "select video_id from video_collect where dir_id = ?1", nativeQuery = true)

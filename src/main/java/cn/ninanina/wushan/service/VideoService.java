@@ -135,19 +135,17 @@ public interface VideoService {
 
     /**
      * 喜欢/取消喜欢video
-     *
-     * @return true表示喜欢，false表示取消喜欢
      */
-    boolean likeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
+    VideoDetail likeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
 
     List<Long> likedVideos(@Nonnull Long userId);
 
+    List<VideoDetail> likedVideos(long userId, int offset, int limit);
+
     /**
      * 不喜欢/取消不喜欢video
-     *
-     * @return true表示不喜欢，false表示取消不喜欢
      */
-    boolean dislikeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
+    VideoDetail dislikeVideo(@Nonnull Long userId, @Nonnull VideoDetail video);
 
     List<Long> dislikedVideos(@Nonnull Long userId);
 

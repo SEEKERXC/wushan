@@ -14,7 +14,7 @@ import java.util.List;
 @Table(name = "video")
 @EqualsAndHashCode(of = "id")
 @JsonIgnoreProperties(value = {"hibernateLazyInitializer", "handler"}, ignoreUnknown = true)
-public class VideoDetail implements Serializable { //todo:添加视频评分,根据点赞数、踩数、收藏数、下载数以及推送数计算
+public class VideoDetail implements Serializable {
     @Id
     @GeneratedValue
     private Long id;
@@ -55,8 +55,14 @@ public class VideoDetail implements Serializable { //todo:添加视频评分,根
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer liked;
 
+    @Transient
+    private Boolean like;//表示指定用户喜欢
+
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer disliked;
+
+    @Transient
+    private Boolean dislike;//表示指定用户不喜欢
 
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer commentNum;

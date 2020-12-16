@@ -21,4 +21,7 @@ public class VideoUserLike {
 
     @Column(nullable = false, columnDefinition = "bigint(20) default 0")
     private Long userId;
+
+    @Column
+    private Long time;
 }
