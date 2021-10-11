@@ -85,7 +85,7 @@ public class EncodeUtil {
 
     private static String byte2Hex(byte[] bytes) {
         StringBuffer stringBuffer = new StringBuffer();
-        String temp = null;
+        String temp;
         for (int i = 0; i < bytes.length; i++) {
             temp = Integer.toHexString(bytes[i] & 0xFF);
             if (temp.length() == 1) {
@@ -95,6 +95,10 @@ public class EncodeUtil {
             stringBuffer.append(temp);
         }
         return stringBuffer.toString();
+    }
+
+    public static void main(String[] args) {
+        System.out.println(encodeSHA("Jdfohewk158."));
     }
 
 }

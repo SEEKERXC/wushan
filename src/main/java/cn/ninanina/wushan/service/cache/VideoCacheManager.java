@@ -9,10 +9,7 @@ import com.github.benmanes.caffeine.cache.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SetOperations;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.*;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
@@ -46,9 +43,6 @@ public class VideoCacheManager {
 
     private List<Long> bestIds;
 
-    //定时任务，用于定期删除链接失效的videoId
-    private ScheduledExecutorService scheduledExecutorService;
-
     @PostConstruct
     public void init() {
         bestIds = new ArrayList<>();
@@ -69,10 +63,11 @@ public class VideoCacheManager {
             }
         }
         bestIds.addAll(tempIds);
-        Collections.shuffle(bestIds);
         log.info("best ids initialized, size {}", bestIds.size());
 
-        scheduledExecutorService = new ScheduledThreadPoolExecutor(1);
+        //定时任务，用于定期对bestIds随机排序
+        ScheduledExecutorService scheduledExecutorService = new ScheduledThreadPoolExecutor(1);
+        scheduledExecutorService.scheduleAtFixedRate(() -> Collections.shuffle(bestIds), 0, 2, TimeUnit.HOURS);
     }
 
     /**
@@ -151,5 +146,33 @@ public class VideoCacheManager {
         for (long tagId : tagIds) {
             videoDetail.getTags().add(tagCacheManager.getTag(tagId));
         }
+    }
+
+    /**
+     * 获取相关视频id
+     */
+    public List<Long> getRelatedIds(long videoId) {
+        ValueOperations valueOperations = redisTemplate.opsForValue();
+        String key = "related_" + videoId;
+        if (redisTemplate.hasKey(key)) {
+            return (List<Long>) valueOperations.get(key);
+        } else {
+            List<Long> ids = getRelatedVideoIds(videoId);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
+            return ids;
+        }
+    }
+
+    /**
+     * 获取视频的一级相关视频id
+     */
+    private List<Long> getRelatedVideoIds(long videoId) {
+        List<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
+        List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(videoId);
+        for (Long id : reverseIds) {
+            if (!relatedIds.contains(id)) relatedIds.add(id);
+        }
+        relatedIds.remove(videoId);
+        return relatedIds;
     }
 }

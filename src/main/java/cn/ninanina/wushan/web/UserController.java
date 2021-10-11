@@ -2,7 +2,9 @@ package cn.ninanina.wushan.web;
 
 import cn.ninanina.wushan.common.Gender;
 import cn.ninanina.wushan.common.util.EncodeUtil;
+import cn.ninanina.wushan.domain.LoginInfo;
 import cn.ninanina.wushan.domain.User;
+import cn.ninanina.wushan.repository.LoginRepository;
 import cn.ninanina.wushan.repository.UserRepository;
 import cn.ninanina.wushan.service.CommonService;
 import cn.ninanina.wushan.service.UserService;
@@ -21,6 +23,8 @@ public class UserController extends BaseController {
     @Autowired
     private UserRepository userRepository;
     @Autowired
+    private LoginRepository loginRepository;
+    @Autowired
     private UserService userService;
     @Autowired
     private CommonService commonService;
@@ -35,9 +39,15 @@ public class UserController extends BaseController {
                              Gender gender) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
         if (userRepository.findByUsername(username) != null) return result(ResultMsg.USER_EXIST);
-        User user = userService.register(username, password, nickname, gender);
+        User user = userService.register(appKey, username, password, nickname, gender);
         String token = genToken(appKey, username);
         userCacheManager.save(token, user.getId());
+        LoginInfo loginInfo = new LoginInfo();
+        loginInfo.setAppKey(appKey);
+        loginInfo.setIp(getIp());
+        loginInfo.setUserId(user.getId());
+        loginInfo.setTime(System.currentTimeMillis());
+        loginRepository.save(loginInfo);
         log.info("ip {} registered a new user, id: {}", getIp(), user.getId());
         return result(Pair.of(token, user));
     }

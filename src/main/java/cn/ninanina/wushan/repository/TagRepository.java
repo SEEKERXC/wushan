@@ -40,4 +40,8 @@ public interface TagRepository extends JpaRepository<TagDetail, Long> {
     //获取视频数量最多的若干个tag的id
     @Query(value = "select id from tag order by videoCount desc limit ?1", nativeQuery = true)
     List<Long> findHotTagIds(int limit);
+
+    //根据首字母获取id
+    @Query(value = "select id from tag where start = ?1", nativeQuery = true)
+    List<Long> findStartIds(char start);
 }

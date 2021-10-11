@@ -2,8 +2,11 @@ package cn.ninanina.wushan.service.impl;
 
 import cn.ninanina.wushan.common.Constant;
 import cn.ninanina.wushan.common.Gender;
+import cn.ninanina.wushan.domain.AppInfo;
+import cn.ninanina.wushan.domain.LoginInfo;
 import cn.ninanina.wushan.domain.User;
 import cn.ninanina.wushan.domain.Playlist;
+import cn.ninanina.wushan.repository.AppInfoRepository;
 import cn.ninanina.wushan.repository.UserRepository;
 import cn.ninanina.wushan.repository.PlaylistRepository;
 import cn.ninanina.wushan.service.UserService;
@@ -21,9 +24,11 @@ public class UserServiceImp implements UserService {
     private UserRepository userRepository;
     @Autowired
     private PlaylistRepository playlistRepository;
+    @Autowired
+    private AppInfoRepository appInfoRepository;
 
     @Override
-    public User register(String username, String password, String nickname, Gender gender) {
+    public User register(String appKey, String username, String password, String nickname, Gender gender) {
         User user = new User();
         Random random = new Random();
         int randInt = random.nextInt(Constant.USER_SCALE);

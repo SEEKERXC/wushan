@@ -85,10 +85,10 @@ public class VideoServiceImpl implements VideoService {
         List<TagDetail> tags = null;
         switch (type) {
             case "hot": //最新更新链接的视频
-                return jingxuanVideos(appKey, limit);
+                return jingxuanVideos(appKey, limit, userId);
             case "recommend": //根据用户的观看、收藏、下载与不喜欢等行为进行推荐
                 List<VideoDetail> recommendResult = new ArrayList<>();
-                if (userId == null) return jingxuanVideos(appKey, limit);
+                if (userId == null) return jingxuanVideos(appKey, limit, userId);
                 List<Long> viewedVideoIds = userDataCacheManager.getViewedIds(userId);
                 List<Long> downloadedIds = userDataCacheManager.getDownloadedIds(userId);
                 List<Long> likedIds = userDataCacheManager.getLikedIds(userId);
@@ -98,8 +98,9 @@ public class VideoServiceImpl implements VideoService {
                         && CollectionUtils.isEmpty(collectedVideoIds)
                         && CollectionUtils.isEmpty(downloadedIds)
                         && CollectionUtils.isEmpty(likedIds)) {
-                    return jingxuanVideos(appKey, limit);
+                    return jingxuanVideos(appKey, limit, userId);
                 }
+                // TODO: 2020/12/18 0018 优化速度。现在很慢！
                 List<Long> ids = new ArrayList<>();
                 ids.addAll(collectedVideoIds);
                 ids.addAll(downloadedIds); //下载的和收藏的应具有相同比重
@@ -109,18 +110,18 @@ public class VideoServiceImpl implements VideoService {
                 ids.addAll(likedIds); //喜欢的视频比重稍微低一点
                 ids.addAll(viewedVideoIds);
                 for (long id : ids) {
-                    List<Long> relatedIds = getRelatedVideoIds(id);
+                    List<Long> relatedIds = videoCacheManager.getRelatedIds(id);
                     for (long relatedId : relatedIds) {
                         if (!recommendCacheManager.exist(appKey, relatedId)
                                 && !collectedVideoIds.contains(relatedId)
                                 && !downloadedIds.contains(relatedId)
                                 && !viewedVideoIds.contains(relatedId)
                                 && !dislikedIds.contains(relatedId)) {
-                            VideoDetail video = videoCacheManager.getIfPresent(relatedId);
-                            if (video == null)
-                                videoRepository.findById(relatedId).ifPresent(recommendResult::add);
-                            else recommendResult.add(video);
-                            recommendCacheManager.save(appKey, relatedId);
+                            VideoDetail video = videoCacheManager.getVideo(relatedId);
+                            if (video != null) {
+                                recommendResult.add(video);
+                                recommendCacheManager.save(appKey, relatedId);
+                            }
                         }
                         if (recommendResult.size() >= limit) break;
                     }
@@ -128,7 +129,7 @@ public class VideoServiceImpl implements VideoService {
                 }
                 if (recommendResult.size() < limit) {
                     int left = limit - recommendResult.size();
-                    recommendResult.addAll(jingxuanVideos(appKey, left));
+                    recommendResult.addAll(jingxuanVideos(appKey, left, userId));
                 }
                 for (VideoDetail videoDetail : recommendResult)
                     videoCacheManager.loadTagsForVideo(videoDetail);
@@ -201,11 +202,25 @@ public class VideoServiceImpl implements VideoService {
     /**
      * 获取若干个精选video，如果推荐完了，那么在数据库中随机取
      */
-    private List<VideoDetail> jingxuanVideos(@Nonnull String appKey, @Nonnull Integer limit) {
+    private List<VideoDetail> jingxuanVideos(@Nonnull String appKey, @Nonnull Integer limit, Long userId) {
         List<Long> videoIdList = videoCacheManager.getBestIds();
+        List<Long> viewedVideoIds = new ArrayList<>();
+        List<Long> downloadedIds = new ArrayList<>();
+        List<Long> dislikedIds = new ArrayList<>();
+        List<Long> collectedVideoIds = new ArrayList<>();
+        if (userId != null) {
+            viewedVideoIds = userDataCacheManager.getViewedIds(userId);
+            downloadedIds = userDataCacheManager.getDownloadedIds(userId);
+            dislikedIds = userDataCacheManager.getDislikedIds(userId);
+            collectedVideoIds = userDataCacheManager.getCollectedIds(userId);
+        }
         List<VideoDetail> result = new ArrayList<>(limit);
         for (Long id : videoIdList) {
-            if (!recommendCacheManager.exist(appKey, id)) {
+            if (!recommendCacheManager.exist(appKey, id)
+                    && !viewedVideoIds.contains(id)
+                    && !downloadedIds.contains(id)
+                    && !dislikedIds.contains(id)
+                    && !collectedVideoIds.contains(id)) {
                 VideoDetail videoDetail = videoCacheManager.getVideo(id);
                 if (videoDetail != null) result.add(videoDetail);
                 recommendCacheManager.save(appKey, id);
@@ -215,9 +230,16 @@ public class VideoServiceImpl implements VideoService {
         Long maxId = videoRepository.findMaxId();
         Random random = new Random();
         while (result.size() < limit) {
-            videoRepository.findById((long) random.nextInt(maxId.intValue())).ifPresent(result::add);
+            VideoDetail videoDetail = videoRepository.findById((long) random.nextInt(maxId.intValue())).orElse(null);
+            if (videoDetail != null
+                    && !recommendCacheManager.exist(appKey, videoDetail.getId())
+                    && !viewedVideoIds.contains(videoDetail.getId())
+                    && !downloadedIds.contains(videoDetail.getId())
+                    && !dislikedIds.contains(videoDetail.getId())
+                    && !collectedVideoIds.contains(videoDetail.getId()))
+                result.add(videoDetail);
         }
-        log.info("user with appKey {} get hot videos, now total: {}",
+        log.info("user with appKey {} get jingxuan videos, now total: {}",
                 appKey, recommendCacheManager.total(appKey));
         for (VideoDetail videoDetail : result)
             videoCacheManager.loadTagsForVideo(videoDetail);
@@ -240,7 +262,7 @@ public class VideoServiceImpl implements VideoService {
                 viewed.setUserId(userId);
                 viewed.setVideoId(videoId);
                 viewed.setViewCount(1);
-                viewed.setWatchTime(0L);
+                viewed.setWatchTime(0);
             } else {
                 viewed.setViewCount(viewed.getViewCount() + 1);
                 viewed.setTime(System.currentTimeMillis());
@@ -254,10 +276,19 @@ public class VideoServiceImpl implements VideoService {
         return detail;
     }
 
+    @Override
+    public void recordWatch(long userId, long videoId, int time) {
+        VideoUserViewed viewed = viewedRepository.findByVideoIdAndUserId(videoId, userId);
+        if (viewed != null) {
+            viewed.setWatchTime(viewed.getWatchTime() + time);
+            viewedRepository.save(viewed);
+        }
+    }
+
     //只获取一级相关
     @Override
     public List<VideoDetail> relatedVideos(@Nonnull Long videoId, @Nonnull Integer offset, @Nonnull Integer limit) {
-        List<Long> relatedIds = getRelatedVideoIds(videoId);
+        List<Long> relatedIds = videoCacheManager.getRelatedIds(videoId);
         List<VideoDetail> result = new ArrayList<>(limit);
         for (long id : relatedIds) {
             if (--offset >= 0) continue;
@@ -340,15 +371,15 @@ public class VideoServiceImpl implements VideoService {
         comment.setUser(user);
         comment.setApprove(0);
         comment.setDisapprove(0);
-        Comment parent = commentRepository.findById(parentId).orElse(null);
-        if (parent != null) {
-            comment.setParentId(parentId);
-            comment.setParent(parent);
-        }
+        if (parentId != null) comment.setParentId(parentId);
         comment.setTime(System.currentTimeMillis());
         comment = commentRepository.save(comment);
         comment.setApproved(false);
         comment.setDisapproved(false);
+        if (parentId != null) {
+            Comment parent = commentRepository.findById(parentId).orElse(null);
+            if (parent != null) comment.setParent(parent);
+        }
         videoDetail.setCommentNum(videoDetail.getCommentNum() + 1);
         videoCacheManager.saveVideo(videoDetail);
         return comment;
@@ -497,13 +528,10 @@ public class VideoServiceImpl implements VideoService {
         List<Long> dislikedVideoIds = new ArrayList<>();
         List<Long> downloadedIds = new ArrayList<>();
         if (userId != null) {
-            viewedVideoIds.addAll(viewedRepository.findViewedIds(userId));
-            List<Long> playlistIds = playlistRepository.findAllPlaylistIds(userId);
-            for (long playlistId : playlistIds) {
-                collectedVideoIds.addAll(playlistRepository.findAllVideoIds(playlistId));
-            }
-            dislikedVideoIds.addAll(dislikeRepository.findVideoIdsByUserId(userId));
-            downloadedIds.addAll(downloadRepository.findVideoIdsByUserId(userId));
+            viewedVideoIds.addAll(userDataCacheManager.getViewedIds(userId));
+            collectedVideoIds.addAll(userDataCacheManager.getCollectedIds(userId));
+            dislikedVideoIds.addAll(userDataCacheManager.getDislikedIds(userId));
+            downloadedIds.addAll(userDataCacheManager.getDownloadedIds(userId));
         }
         for (Long id : validIds) {
             if (!recommendCacheManager.exist(appKey, id)
@@ -525,7 +553,9 @@ public class VideoServiceImpl implements VideoService {
             if (result.size() >= limit) break;
         }
         if (result.size() < limit) {
-            result.addAll(jingxuanVideos(appKey, limit - result.size()));
+            List<VideoDetail> left = jingxuanVideos(appKey, limit - result.size(), userId);
+            result.removeAll(left);
+            result.addAll(left);
         }
         return result;
     }
@@ -636,19 +666,6 @@ public class VideoServiceImpl implements VideoService {
             if (videoDetail != null) result.add(Pair.of(toWatch, videoDetail));
         }
         return result;
-    }
-
-    /**
-     * 获取视频的一级相关视频id
-     */
-    private List<Long> getRelatedVideoIds(long videoId) {
-        List<Long> relatedIds = videoRepository.findRelatedVideoIds(videoId);
-        List<Long> reverseIds = videoRepository.findRelatedVideoIds_reverse(videoId);
-        for (Long id : reverseIds) {
-            if (!relatedIds.contains(id)) relatedIds.add(id);
-        }
-        relatedIds.remove(videoId);
-        return relatedIds;
     }
 
 }

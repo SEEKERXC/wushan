@@ -12,7 +12,7 @@
     <artifactId>wushan</artifactId>
     <version>0.0.3</version>
     <name>wushan</name>
-    <description>High quality free video community. 高质量免费（ADULT）视频社区。奇数版本-爬虫；偶数版本-web服务 0.0.2版本实现了视频推荐和视频播放。
+    <description>High quality free video community. 高质量免费（ADULT）视频社区。 0.0.2版本实现了视频推荐和视频播放。
         0.0.3版本实现了大部分其他基础业务，包括视频标题标签翻译、索引建立与搜索、用户管理、评论、收藏等功能。
     </description>
     <properties>

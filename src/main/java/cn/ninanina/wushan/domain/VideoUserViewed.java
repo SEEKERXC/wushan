@@ -28,6 +28,6 @@ public class VideoUserViewed {
     @Column(nullable = false, columnDefinition = "int(11) default 0")
     private Integer viewCount;
 
-    @Column(nullable = false, columnDefinition = "bigint(20) default 0")
-    private Long watchTime; //TODO:用户停留在视频页面上面的总时间
+    @Column(nullable = false, columnDefinition = "int(11) default 0")
+    private Integer watchTime; //TODO:用户停留在视频页面上面的总时间，以秒为单位
 }

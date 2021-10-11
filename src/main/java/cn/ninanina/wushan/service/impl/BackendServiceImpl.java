@@ -76,11 +76,6 @@ public class BackendServiceImpl implements BackendService {
         /* 翻译tag */
         new Thread(() -> {
             Long tagWatermark = tagRepository.findTranslateWaterMark();
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
             while (tagWatermark != null) {
                 tagRepository.findById(tagWatermark).ifPresent(tagDetail -> {
                     Map<String, String> params = new HashMap<>();
@@ -247,7 +242,7 @@ public class BackendServiceImpl implements BackendService {
     /**
      * 保存视频的秒数
      */
-    private void saveDurationSeconds(){
+    private void saveDurationSeconds() {
 
     }
 

@@ -43,6 +43,8 @@ public class PlaylistServiceImp implements PlaylistService {
         playlist.setUser(user);
         playlist.setCreateTime(System.currentTimeMillis());
         playlist.setUpdateTime(System.currentTimeMillis());
+        playlist.setCover("");
+        playlist.setUserSetCover(false);
         playlist.setIsPublic(true);
         playlist = playlistRepository.save(playlist);
         log.info("user created video dir, user id: {}, dir id: {}", user.getId(), playlist.getId());
@@ -64,16 +66,6 @@ public class PlaylistServiceImp implements PlaylistService {
         playlistRepository.remove(id);
         playlistRepository.flush();
         log.info("removed playlist, id:{}", id);
-    }
-
-    @Override
-    public Playlist rename(@Nonnull Long id, @Nonnull String name) {
-        Playlist dir = playlistRepository.getOne(id);
-        dir.setName(name);
-        dir.setUpdateTime(System.currentTimeMillis());
-        dir = playlistRepository.save(dir);
-        log.info("renamed dir, id: {} new name: {}", id, name);
-        return dir;
     }
 
     @Override
@@ -118,7 +110,12 @@ public class PlaylistServiceImp implements PlaylistService {
     public List<VideoDetail> listVideos(@Nonnull Long id) {
         Playlist playlist = playlistRepository.findById(id).orElse(null);
         if (playlist == null) return null;
-        List<VideoDetail> videoDetails = playlist.getCollectedVideos();
+        List<VideoDetail> videoDetails = new ArrayList<>();
+        List<Long> videoIds = playlistRepository.findAllVideoIds(id);
+        for (long vid : videoIds) {
+            VideoDetail videoDetail = videoCacheManager.getVideo(vid);
+            if (videoDetail != null) videoDetails.add(videoDetail);
+        }
         for (VideoDetail videoDetail : videoDetails) videoCacheManager.loadTagsForVideo(videoDetail);
         return videoDetails;
     }

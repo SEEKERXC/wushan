@@ -117,9 +117,12 @@ public class TagServiceImpl implements TagService {
             if (page == 0) { //第一页全部加载完
                 char[] chars = new char[]{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'};
                 for (char c1 : chars) {
-                    TagDetail tagDetail = new TagDetail();
-                    tagDetail.setStart(c1);
-                    result.addAll(tagRepository.findAll(Example.of(tagDetail)));
+                    List<Long> ids = tagRepository.findStartIds(c1);
+                    for (long id : ids) {
+                        TagDetail tagDetail = tagCacheManager.getTag(id);
+                        if (tagDetail != null)
+                            result.add(tagDetail);
+                    }
                 }
                 result.sort((o1, o2) -> o2.getVideoCount() - o1.getVideoCount());
             }

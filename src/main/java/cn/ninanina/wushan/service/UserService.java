@@ -9,7 +9,7 @@ public interface UserService {
      *
      * @return 用户对象，包含id、username、nickname等
      */
-    User register(String username, String password, String nickname, Gender gender);
+    User register(String appKey, String username, String password, String nickname, Gender gender);
 
     /**
      * 用户登录

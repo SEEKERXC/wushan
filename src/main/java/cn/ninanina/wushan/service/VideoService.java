@@ -33,6 +33,15 @@ public interface VideoService {
     VideoDetail getVideoDetail(@Nonnull Long videoId, Long userId, Boolean withoutSrc, Boolean record);
 
     /**
+     * 增量记录播放时长
+     *
+     * @param userId  用户id
+     * @param videoId 视频id
+     * @param time    增加的播放时长，以秒为单位
+     */
+    void recordWatch(long userId, long videoId, int time);
+
+    /**
      * 首先获取一级相关视频，一般有20-50个，获取完了之后获取二级相关，一般有1000个左右。
      *
      * @param videoId 视频id

@@ -11,5 +11,5 @@ public class Constant {
     //标签索引路径
     public static final String TAG_INDEX_DIR = "/home/data/tag/index";
     //生成secret的密钥，服务器和客户端心照不宣。
-    public static final String SECRET_KEY = "jdfohewk";
+    public static final String SECRET_KEY = "a451450edad65e820444b2adaf285f36d824248432f1e444c5c0ac2d8b27424d";
 }

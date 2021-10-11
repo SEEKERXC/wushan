@@ -34,7 +34,7 @@ public class RecommendCacheManager {
     public void save(String appKey, long videoId) {
         SetOperations setOperations = redisTemplate.opsForSet();
         setOperations.add(appKey, String.valueOf(videoId));
-        redisTemplate.expire(appKey, 30, TimeUnit.DAYS);
+        redisTemplate.expire(appKey, 24, TimeUnit.HOURS);
     }
 
     /**

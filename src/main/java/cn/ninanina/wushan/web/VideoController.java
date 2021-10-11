@@ -42,6 +42,8 @@ public class VideoController extends BaseController {
     private CommonService commonService;
     @Autowired
     private PlaylistService playlistService;
+    @Autowired
+    private SearchRepository searchRepository;
 
     /**
      * 首页推荐视频
@@ -98,6 +100,22 @@ public class VideoController extends BaseController {
         log.info("appKey {} get video detail: {}", appKey, id);
         videoDetail = videoService.getVideoDetail(id, userId, withoutSrc, record);
         return result(videoDetail);
+    }
+
+    /**
+     * 增量记录观看视频时长，客户端在播放视频时，每隔几秒都需要记录一次播放总时长，以秒为单位
+     */
+    @PostMapping("/record")
+    public Response recordWatchTime(@RequestParam("appKey") String appKey,
+                                    @RequestParam("token") String token,
+                                    @RequestParam("videoId") Long videoId,
+                                    @RequestParam("time") Integer time) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        if (videoCacheManager.getVideo(videoId) == null) return result(ResultMsg.INVALID_VIDEO_ID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        videoService.recordWatch(userId, videoId, time);
+        return result();
     }
 
     /**
@@ -174,6 +192,13 @@ public class VideoController extends BaseController {
         if (StringUtils.isEmpty(query) || offset < 0 || limit <= 0 || limit > 50)
             return result(ResultMsg.ParamError);
         List<VideoDetail> result = videoService.search(query, offset, limit, sort);
+        SearchInfo searchInfo = new SearchInfo();
+        searchInfo.setAppKey(appKey);
+        searchInfo.setIp(getIp());
+        searchInfo.setSort(sort);
+        searchInfo.setWord(query);
+        searchInfo.setTime(System.currentTimeMillis());
+        searchRepository.save(searchInfo);
         log.info("ip {} search with query {}, offset: {}, limit: {}, result size: {}", getIp(), query, offset, limit, result.size());
         return result(result);
     }
@@ -200,8 +225,25 @@ public class VideoController extends BaseController {
         if (StringUtils.isEmpty(content.trim())) return result(ResultMsg.EMPTY_CONTENT);
         Comment comment = videoService.commentOn(userId, id, content, parentId);
         if (comment == null) return result(ResultMsg.INVALID_VIDEO_ID);
-        log.info("user {} commented on video {}, content: {}, commentId: {}", userId, id, content, comment.getId());
+        log.info("user {} commented on video {}, content: {}, commentId: {}, parentId: {}", userId, id, content, comment.getId(), parentId);
         return result(comment);
+    }
+
+    /**
+     * 删除评论
+     */
+    @PostMapping("/comment/delete")
+    public Response deleteComment(@RequestParam("appKey") String appKey,
+                                  @RequestParam("token") String token,
+                                  @RequestParam("commentId") Long commentId) {
+        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
+        Long userId = getUserId(token);
+        if (userId == null) return result(ResultMsg.NOT_LOGIN);
+        Comment comment = commentRepository.findById(commentId).orElse(null);
+        if (comment == null) return result(ResultMsg.INVALID_COMMENT_ID);
+        if (!comment.getUser().getId().equals(userId)) return result(ResultMsg.FAILED);
+        commentRepository.delete(comment);
+        return result();
     }
 
     /**
@@ -264,7 +306,7 @@ public class VideoController extends BaseController {
         if (videoDetail == null) return result(ResultMsg.INVALID_VIDEO_ID);
         if (page < 0 || size <= 0 || size > 50) return result(ResultMsg.ParamError);
         List<Comment> result = videoService.getComments(userId, videoId, page, size, sort);
-        log.info("get comments of video {}, ip: {}", videoId, getIp());
+        log.info("get comments of video {}, page: {}, size: {}, sort: {} ip: {}, result size: {}", videoId, page, size, sort, getIp(), result.size());
         return result(result);
     }
 
@@ -389,29 +431,13 @@ public class VideoController extends BaseController {
     }
 
     /**
-     * 重命名收藏夹
-     */
-    @PostMapping("/playlist/rename")
-    public Response renameCollectDir(@RequestParam("appKey") String appKey,
-                                     @RequestParam("dirId") Long dirId,
-                                     @RequestParam("name") String name,
-                                     @RequestParam("token") String token) {
-        if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
-        Long userId = getUserId(token);
-        if (userId == null) return result(ResultMsg.NOT_LOGIN);
-        if (playlistService.possess(userId, dirId) == null) return result(ResultMsg.COLLECT_WRONG_DIR);
-        Playlist dir = playlistService.rename(dirId, name);
-        return result(dir);
-    }
-
-    /**
      * 更新收藏夹
      */
     @PostMapping("/playlist/update")
     public Response updatePlaylist(@RequestParam("appKey") String appKey,
                                    @RequestParam("token") String token,
                                    @RequestParam("dirId") Long dirId,
-                                   @RequestParam("coverUrl") String coverUrl,
+                                   @RequestParam(value = "coverUrl", required = false) String coverUrl,
                                    @RequestParam("name") String name,
                                    @RequestParam("isPublic") Boolean isPublic) {
         if (commonService.appKeyValid(appKey)) return result(ResultMsg.APPKEY_INVALID);
@@ -419,8 +445,10 @@ public class VideoController extends BaseController {
         if (userId == null) return result(ResultMsg.NOT_LOGIN);
         Playlist playlist = playlistService.possess(userId, dirId);
         if (playlist == null) return result(ResultMsg.COLLECT_WRONG_DIR);
-        if (!playlist.getCover().equals(coverUrl)) playlist.setUserSetCover(true);
-        playlist.setCover(coverUrl);
+        if (!StringUtils.isEmpty(coverUrl) && !playlist.getCover().equals(coverUrl)) {
+            playlist.setUserSetCover(true);
+            playlist.setCover(coverUrl);
+        }
         playlist.setName(name);
         playlist.setIsPublic(isPublic);
         playlist.setUpdateTime(System.currentTimeMillis());

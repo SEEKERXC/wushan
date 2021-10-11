@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 这个类管理用户的数据，包括用户看过的视频id、用户喜欢/不喜欢的视频id、收藏的视频id、下载的视频id
+ * 因为这是用于推荐，所有数据不需要同步更新，只需要短期内过期就可以了，目前设置1小时过期
  */
 @Component("userDataCacheManager")
 @Slf4j
@@ -47,7 +48,7 @@ public class UserDataCacheManager {
             log.info("user {} get viewed ids from cache, size {}", userId, ids.size());
         } else {
             ids = viewedRepository.findViewedIds(userId);
-            valueOperations.set(key, ids, 2, TimeUnit.HOURS);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
         }
         return ids;
     }
@@ -60,7 +61,7 @@ public class UserDataCacheManager {
             ids = (List<Long>) valueOperations.get(key);
         } else {
             ids = downloadRepository.findVideoIdsByUserId(userId);
-            valueOperations.set(key, ids, 2, TimeUnit.HOURS);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
         }
         return ids;
     }
@@ -77,7 +78,7 @@ public class UserDataCacheManager {
             for (long playlistId : playlistIds) {
                 ids.addAll(playlistRepository.findAllVideoIds(playlistId));
             }
-            valueOperations.set(key, ids, 2, TimeUnit.HOURS);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
         }
         return ids;
     }
@@ -90,7 +91,7 @@ public class UserDataCacheManager {
             ids = (List<Long>) valueOperations.get(key);
         } else {
             ids = likeRepository.findByUserId(userId);
-            valueOperations.set(key, ids, 2, TimeUnit.HOURS);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
         }
         return ids;
     }
@@ -103,7 +104,7 @@ public class UserDataCacheManager {
             ids = (List<Long>) valueOperations.get(key);
         } else {
             ids = dislikeRepository.findVideoIdsByUserId(userId);
-            valueOperations.set(key, ids, 2, TimeUnit.HOURS);
+            valueOperations.set(key, ids, 1, TimeUnit.HOURS);
         }
         return ids;
     }

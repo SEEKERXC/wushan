@@ -37,7 +37,6 @@ public class TagCacheManager {
                 .initialCapacity(250)
                 .maximumSize(10000)
                 .build(key -> {
-                    log.info("load tag from repo. key: {}, size: {}", key, tagCache.estimatedSize() + 1);
                     TagDetail tagDetail = tagRepository.findById(key).orElse(null);
                     if (tagDetail != null)
                         videoIdMap.put(tagDetail, tagRepository.findVideoIdsForTag(

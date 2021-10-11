@@ -11,7 +11,6 @@ public interface PlaylistService {
     /**
      * 新建收藏夹
      *
-     * @param user 用户
      * @param name 收藏夹名字
      * @return 创建结果
      */
@@ -20,7 +19,6 @@ public interface PlaylistService {
     /**
      * 查看收藏夹是否属于用户
      *
-     * @param user  用户
      * @param dirId 收藏夹id
      * @return 属于返回videoDir，不属于返回null
      */
@@ -33,14 +31,6 @@ public interface PlaylistService {
      * @param id   收藏夹id
      */
     void delete(@Nonnull Long id);
-
-    /**
-     * 重命名收藏夹
-     *
-     * @param id   收藏夹id
-     * @param name 新名字
-     */
-    Playlist rename(@Nonnull Long id, @Nonnull String name);
 
     /**
      * 获取用户的收藏文件夹列表
