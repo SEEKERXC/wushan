@@ -9,7 +9,7 @@
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <!--日志文件输出的文件名-->
             <FileNamePattern>
-                /home/data/logs/wushan/%d{yyyy-MM-dd}.log
+                /home/wushan/logs/%d{yyyy-MM-dd}.log
             </FileNamePattern>
             <!--日志文件保留天数-->
             <MaxHistory>7</MaxHistory>
@@ -26,10 +26,10 @@
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level> <!-- 日志过滤级别 -->
         </filter>
-        <file>/home/data/logs/error.log</file><!-- 文件存放路径 -->
+        <file>/home/wushan/logs/error.log</file><!-- 文件存放路径 -->
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/home/data/logs/error/%d{yyyy-MM-dd}.log</fileNamePattern><!-- 每天归档 -->
-            <maxHistory>7</maxHistory><!-- 日志存放周期（天） -->
+            <fileNamePattern>/home/wushan/logs/error/%d{yyyy-MM-dd}.log</fileNamePattern><!-- 每天归档 -->
+            <maxHistory>365</maxHistory><!-- 日志存放周期（天） -->
         </rollingPolicy>
         <layout class="ch.qos.logback.classic.PatternLayout">
             <Pattern>
